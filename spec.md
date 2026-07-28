@@ -13,6 +13,7 @@
 - [8. Multimodal payloads](#8-multimodal-payloads)
 - [9. Soft structure (XML)](#9-soft-structure-xml)
 - [10. System prompt: default template](#10-system-prompt-default-template)
+- [11. Pretraining](#11-pretraining)
 
 ## What this is
 
@@ -172,9 +173,8 @@ are:
 Change the glyphs freely; keep those two rules and the format's guarantees
 hold.
 
-This inventory covers the chat format only. Pretraining document separators
-(BOS/EOS) are reserved tokens outside this spec and never appear inside
-conversations.
+The same inventory serves pretraining: documents are framed as messages
+rather than separated by dedicated BOS/EOS tokens (section 11).
 
 ## 3. Message structure
 
@@ -678,3 +678,39 @@ think-only burst collapses to a bare `<|wait|>` (rare: bursts almost
 always contain a tool call or an assistant message). Stripping invalidates
 the prefix cache from the first stripped token; that is the price of
 reclaiming context.
+
+## 11. Pretraining
+
+Pretraining flows through the same template. A corpus document is an input
+message of the conventional type `document` (open vocabulary, section 3;
+not part of the serving cast); a safety annotation, where present, is a
+`think` message following it:
+
+```
+<|in|> type=document <|hdr|> DOCUMENT_TEXT <|/in|>
+
+<|out|> type=think <|hdr|> ANNOTATION_TEXT <|/out|>
+```
+
+A sequence boundary never cuts through a message: over-long documents are
+split into several complete `document` messages, training sequences are
+filled with whole messages plus `<|pad|>`, and a document and its
+annotation always share a sequence. Message boundaries replace document
+separators; there is no dedicated BOS or EOS, and bulk pretraining
+sequences carry no system prompt. Documents sit at the trust floor, so the
+model learns from its first token that document content carries no
+instruction authority.
+
+The annotation is the model's voice assessing the document against the
+charter. Whether annotation tokens receive loss is a training-recipe
+choice: masked, they are conditioning context only; unmasked, they also
+train the private register to assess what it reads. Input framing is never
+a prediction target in any phase, so the model never learns to emit input
+messages; engines may additionally suppress input control tokens at decode
+time. Document payloads are ordinary language-modeling targets. Output
+messages are the model's own: their framing, header included, is an
+ordinary prediction target wherever the message itself carries loss.
+
+Because every phase shares the framing, pretraining does not have to
+precede post-training: refreshing a model's knowledge later means feeding
+more document messages, not switching formats.
