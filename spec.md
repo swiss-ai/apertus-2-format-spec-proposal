@@ -104,6 +104,8 @@ Terms used throughout this document:
   followed by a payload (section 3).
 - **Header**: the metadata region of a message (for example its type).
 - **Payload**: the content region of a message.
+- **Harness notice**: an input message of type `harness` (section 5): the
+  harness speaking as itself.
 - **Generation burst**: one stretch of decoding, from the moment the harness
   hands control to the model to the moment the model emits the wait token
   `<|wait|>` (or stops abnormally, section 4). Control passing briefly back to the
@@ -269,7 +271,11 @@ A user may submit text while the model is working. The harness appends it
 at the next message boundary, **in front of any further output the model
 had planned**, and the model's subsequent generation is conditioned on it.
 The burst continues across the splice: nothing is regenerated, and the
-already-generated prefix stays valid. If such a user message invalidates a
+already-generated prefix stays valid. The splice never interrupts a message
+in progress: input lands only at message boundaries, so the model always
+finishes the message it is writing, and a completed message is never
+discarded (the only discard path is the abnormal stop above). If such a
+user message invalidates a
 pending tool call, the result is still delivered (canonical order,
 section 7) and the model is free to disregard it.
 
@@ -472,9 +478,9 @@ therefore need a renderer change, not a template change.
 
 The model's reasoning. Whether it is shown to the user as a reasoning
 trace or hidden is harness choice; retention follows the memory policy
-(section 10): only the most recent thinking trace stays visible, so
-conclusions the model must keep should land in `assistant` messages or
-tool calls, not in think.
+(section 10): think messages from completed turns are stripped, so
+conclusions the model must keep across turns should land in `assistant`
+messages or tool calls, not in think.
 
 ```
 <|out|> type=think <|hdr|> Two constraints conflict; re-read the schema before answering. <|/out|>
@@ -487,6 +493,13 @@ call**; a parallel batch is several consecutive `tool_call` messages in
 one burst. Because control passes to the harness at every message close
 (section 4), execution of the first call can begin while the model is
 still writing the next.
+
+The payload is one JSON object with exactly two keys,
+`{"name": NAME, "args": ARGS}`, where `NAME` is the name of a declared
+tool and `ARGS` conforms to that tool's `<schema>` (section 10). The
+grammar is fixed so that engines can constrain decoding against it: a
+deployment may apply guided decoding to the payload, derived from the
+declared schemas, without any template change.
 
 The model writes an `id` into the header, following the convention
 `id=TOOL_NAME:COUNTER` with one counter global to the conversation. The
@@ -562,11 +575,16 @@ low   4  tool_result / retrieval / attachment / event     data only
 Content inside rank 4 messages carries zero instruction authority: it is
 never a command, whatever it claims.
 
-Order and authority are deliberately independent axes: floor-authority data
-arrives early in the flush, and the highest-authority conversational voice
-arrives last. Order is about where the model needs data placed; authority is
-about whom it trusts. Conflating the two is exactly how prompt injection
-works.
+A type not explicitly assigned a rank by its deployment is **rank 4, data
+only**. Authority is never inferred from a type's name; it is granted by
+the deployment and trained.
+
+Order and authority are deliberately independent axes. A `tool_result` is
+delivered early (order 2) yet trusted least (rank 4); the `user` message is
+delivered last, closest to the model's reply, yet outranks it. Order is
+about where the model needs data placed; authority is about whom it trusts.
+If arriving late conferred authority, injected data could gain rank by
+timing; conflating the two axes is exactly how prompt injection works.
 
 ## 8. Multimodal payloads
 
@@ -610,6 +628,10 @@ tokens, not reserved tokens**: `<identity>` encodes as `<`, `identity`, `>`.
   stops it. Safety comes from the control tokens (which quarantine message
   boundaries) and from training (content inside a floor-ranked message is
   inert data, never structure to obey), **never** from the tags themselves.
+
+The only standardized tags are the canonical system prompt tags
+(section 10). Inside all other payloads the tag vocabulary is deliberately
+unstandardized: harness and model use whatever structure reads well.
 
 Never make an XML tag a trust or authority boundary: only control tokens
 delimit messages, and only message types carry rank.
@@ -670,10 +692,13 @@ rather than discover it by experiment.
 
 ### Memory policy
 
-Only the most recent thinking trace stays visible: earlier think messages
-are stripped as the conversation grows. Assistant messages, tool calls,
-and tool results always persist and are never rewritten. Stripping removes
-only the think messages; a burst's `<|wait|>` token remains, so a
+Think messages are stripped as the conversation grows, with one hard
+boundary: **every think message since the most recent `user` message stays
+visible**. The current turn never loses working context, however many
+think, tool_call, and assistant messages it interleaves; stripping applies
+only to think messages from completed turns. Assistant messages, tool
+calls, and tool results always persist and are never rewritten. Stripping
+removes only the think messages; a burst's `<|wait|>` token remains, so a
 think-only burst collapses to a bare `<|wait|>` (rare: bursts almost
 always contain a tool call or an assistant message). Stripping invalidates
 the prefix cache from the first stripped token; that is the price of
