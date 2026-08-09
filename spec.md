@@ -712,8 +712,9 @@ charter. Whether annotation tokens receive loss is a training-recipe
 choice: masked, they are conditioning context only; unmasked, they also
 train the private register to assess what it reads. Input framing is never
 a prediction target in any phase, so the model never learns to emit input
-messages; engines may additionally suppress input control tokens at decode
-time. Document payloads are ordinary language-modeling targets. Output
+messages; engines must additionally suppress input control tokens at
+decode time (section 2). Document payloads are ordinary language-modeling
+targets. Output
 messages are the model's own: their framing, header included, is an
 ordinary prediction target wherever the message itself carries loss.
 Memory and visibility policies (sections 6 and 10) are serving-time
@@ -723,3 +724,9 @@ apply.
 Because every phase shares the framing, pretraining does not have to
 precede post-training: refreshing a model's knowledge later means feeding
 more document messages, not switching formats.
+
+The same framing defines how raw text is scored or continued outside a
+conversation (raw completions, loglikelihood evaluation): wrap the text as
+a document message, `<|in|> type=document <|hdr|> TEXT`, and score or
+continue the payload. A tokenizer helper provides this framing; bare text
+with no framing is out of distribution.
