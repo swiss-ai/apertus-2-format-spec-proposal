@@ -690,6 +690,12 @@ harnesses agree on where to look for what.
 `<effort>` is required because the model should know its operating mode
 rather than discover it by experiment.
 
+The levels are a **trained contract**, not an instruction-following hope:
+each level is an explicit training target with effort-matched traces. How
+much the model thinks under a given level follows from that training, the
+same way its decision to call a tool does; a level that was never trained
+is decorative and not conformant.
+
 ### Memory policy
 
 Think messages are stripped as the conversation grows, with one hard
