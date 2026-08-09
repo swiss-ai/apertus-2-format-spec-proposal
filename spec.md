@@ -532,12 +532,15 @@ arrives, and the next burst answers and ends with nothing pending.
 
 ### Unknown output types
 
-Output types are a contract with the harness: an unsupported type is a
-harness error. Nothing is dispatched. The harness may report the failure
-in-band as a `type=harness` notice at the next boundary ("output type
-'quack' is not supported here") so the model can recover, or it may simply
-ignore the message. Decoding is never interrupted for this; generation
-stops only at the wait token (section 4).
+Output types are a contract with the harness, and two cases are distinct.
+An **unknown** type is a harness error: nothing is dispatched, and the
+harness may report the failure in-band as a `type=harness` notice at the
+next boundary ("output type 'quack' is not supported here") so the model
+can recover, or it may simply ignore the message. A **known but
+unconsumed** type (a conventional type this deployment deliberately does
+not consume) is not an error: the message is inert, and no notice is
+raised. Decoding is never interrupted in either case; generation stops
+only at the wait token (section 4).
 
 ## 7. Order and authority
 
