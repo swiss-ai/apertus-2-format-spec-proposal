@@ -701,6 +701,12 @@ sequences carry no system prompt. Documents sit at the trust floor, so the
 model learns from its first token that document content carries no
 instruction authority.
 
+Split parts carry no continuation markers. A document is split only
+because it exceeds the sequence length, so two parts of the same document
+never share a context and a marker would be metadata the model cannot act
+on; the model must be comfortable with partial documents regardless, since
+retrieval delivers chunks of documents by construction.
+
 The annotation is the model's voice assessing the document against the
 charter. Whether annotation tokens receive loss is a training-recipe
 choice: masked, they are conditioning context only; unmasked, they also
@@ -710,6 +716,9 @@ messages; engines may additionally suppress input control tokens at decode
 time. Document payloads are ordinary language-modeling targets. Output
 messages are the model's own: their framing, header included, is an
 ordinary prediction target wherever the message itself carries loss.
+Memory and visibility policies (sections 6 and 10) are serving-time
+properties enforced by a harness; pretraining has no harness, so none
+apply.
 
 Because every phase shares the framing, pretraining does not have to
 precede post-training: refreshing a model's knowledge later means feeding
