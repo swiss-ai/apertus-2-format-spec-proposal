@@ -162,15 +162,19 @@ does not help an attacker; only the harness can place control tokens.
 | `<\|img_start\|>`, `<\|img_token_start\|>`, `<\|img_end_of_row\|>`, `<\|img_end\|>` | image expansion structure (section 8) |
 | `<\|audio_start\|>`, `<\|audio_end\|>` | audio expansion structure (section 8) |
 
-The surface forms above are only a recommendation. The two normative rules
-are:
+The surface forms above are only a recommendation. The three normative
+rules are:
 
 1. each control token is one registered special-token ID, never assembled
    from characters;
-2. untrusted text is always encoded with special tokens disabled.
+2. untrusted text is always encoded with special tokens disabled;
+3. engines suppress the input-framing token ids (`<|sys|>`, `<|/sys|>`,
+   `<|in|>`, `<|/in|>`) at decode time: the model never legitimately
+   emits input framing, so masking these ids closes the forgery path on
+   the output side.
 
-Change the glyphs freely; keep those two rules and the format's guarantees
-hold.
+Change the glyphs freely; keep those three rules and the format's
+guarantees hold.
 
 This inventory covers the chat format only. Pretraining document separators
 (BOS/EOS) are reserved tokens outside this spec and never appear inside
@@ -240,7 +244,12 @@ A generation burst ends in exactly one of two ways:
 
 1. **`<|wait|>`: waiting.** The model has nothing more to emit right now.
    This is the model's only deliberate stop; the engine halts decoding at
-   this token. Anything the harness delivers next resumes the model: a
+   this token. `<|wait|>` is the **only stop token**: configuring the
+   engine to halt at `<|/out|>` or any other control token is a broken
+   deployment. A message close is a scheduling point for the harness, not
+   the end of the request; an engine stopped there returns a half-finished
+   burst, typically the think without the answer. Anything the harness
+   delivers next resumes the model: a
    tool result, a `user` message, a `harness` notice, an `event`. Open
    tool calls do not change the state: the model waits the same way
    whether or not results are still owed (a call stays open until its
@@ -253,7 +262,12 @@ A generation burst ends in exactly one of two ways:
    notice describing what was cut off. Because input can only be appended
    at a message boundary, the harness first discards the incomplete
    message back to the last close; the notice may quote the discarded
-   fragment as inert data.
+   fragment as inert data. Output that violates message framing (a
+   missing `<|hdr|>`, a control token in an illegal position) is treated
+   the same way whether or not decoding stopped: the harness discards
+   back to the last complete message and may resume the model with a
+   notice. Engines that support constrained decoding may instead make
+   ill-formed framing impossible to generate.
 
 A deployment may let the model schedule input for itself: a tool call (a
 timer, a reminder) that causes the harness to deliver a message later,
@@ -331,9 +345,15 @@ for it and owns the query. Each `tool_result` message carries exactly one
 result.
 
 Its header carries the id of the call it answers: the harness echoes the
-model's id from the `tool_call` (section 6) verbatim, guarded by one shape
-rule: the id must match `NAME:COUNTER` (letters, digits, underscores, then
-a colon and digits); anything else is not echoed. The id exists purely for
+id from the `tool_call` (section 6) verbatim, guarded by one character
+rule: the id must match `[A-Za-z0-9_:.-]{1,64}` (no spaces, no `=`, so an
+echoed id can never introduce header syntax); anything else is not echoed.
+The model writes ids following the `NAME:COUNTER` convention (section 6),
+but the echo rule deliberately accepts more: ids that entered the
+conversation through an API layer, such as a client replaying its own
+`call_abc123` ids, pass through unchanged, byte for byte. Verbatim echo
+keeps a replayed conversation token-identical to the original, so prefix
+caches stay warm. The id exists purely for
 the model's reading of history: the same string at the call site and the
 result site turns "which call does this result answer?" into an exact
 string match instead of counting back through the transcript.
