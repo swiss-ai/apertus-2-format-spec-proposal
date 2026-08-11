@@ -462,6 +462,7 @@ and the harness routes on the header alone, without parsing the payload.
 | `assistant` | the reply shown to the user | the user |
 | `think` | reasoning | harness choice: hidden, or shown to the user as a reasoning trace |
 | `tool_call` | tool name + JSON args; the model writes an `id` in the header | the tool runtime |
+| `verifiable_answer` | the verifiable answer to a task, in extractable form | verifiers and graders; ignored by most deployments |
 
 ### `assistant`
 
@@ -529,6 +530,53 @@ Execution begins at each call's close: the Lisbon result was ready so fast
 that the harness spliced it in before the model wrote the Porto call. The
 `<|wait|>` then ends the burst with one call still open; the Porto result
 arrives, and the next burst answers and ends with nothing pending.
+
+### `verifiable_answer`
+
+The verifiable answer to a task, in its extractable form: a channel for
+reinforcement learning with verifiable rewards (RLVR) and automated
+grading, which need the model's claim as a byte-exact payload, never a
+regex match over prose. The payload format (a bare value, JSON, code) is
+defined by the task's verifier. A task with several verifiable parts
+declares a structured payload with one field per part, and the model emits
+a single `verifiable_answer` carrying all of them: the model learns the
+expected shape from the task spec, exactly as answer formats are learned
+today, and extraction stays a parse plus a field lookup.
+
+A `verifiable_answer` comes after the think messages and tool calls it
+rests on, and canonically before the `assistant` message: generated after
+the committed claim, the assistant text presents a result that is already
+in context instead of deriving it a second time, which keeps the two
+consistent. Consistency itself is a training-enforced property (for
+literal answers, containment of the payload in the assistant text is a
+one-line reward check); the format only makes it checkable. Deployments
+that do not consume `verifiable_answer` messages ignore them (see Unknown
+output types below).
+
+A `verifiable_answer` persists like `assistant` messages and tool calls
+(memory policy, section 10): it is a committed claim, not private
+reasoning, and is never stripped.
+
+```
+<|out|> type=think <|hdr|> 6 times 7, so 42. <|/out|>
+
+<|out|> type=verifiable_answer <|hdr|> 42 <|/out|>
+
+<|out|> type=assistant <|hdr|> It works out to 42: six sevens are 42. <|/out|>
+<|wait|>
+```
+
+A multi-part task, with the payload shape the verifier declared (one field
+per unknown):
+
+```
+<|out|> type=think <|hdr|> Adding the equations gives x = 3, so y = -2. <|/out|>
+
+<|out|> type=verifiable_answer <|hdr|> {"x": 3, "y": -2} <|/out|>
+
+<|out|> type=assistant <|hdr|> Solving the system gives x = 3 and y = -2. <|/out|>
+<|wait|>
+```
 
 ### Unknown output types
 
