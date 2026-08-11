@@ -171,10 +171,15 @@ rules are:
 1. each control token is one registered special-token ID, never assembled
    from characters;
 2. untrusted text is always encoded with special tokens disabled;
-3. engines suppress the input-framing token ids (`<|sys|>`, `<|/sys|>`,
-   `<|in|>`, `<|/in|>`) at decode time: the model never legitimately
-   emits input framing, so masking these ids closes the forgery path on
-   the output side.
+3. the model's sampled vocabulary contains exactly four control tokens:
+   `<|out|>`, `<|/out|>`, `<|hdr|>`, and `<|wait|>`; engines suppress
+   every other registered special id at decode time. An allowlist, not a
+   blocklist: it covers the input and system framing, `<|pad|>`, the
+   media tokens, and any reserved or legacy id the tokenizer carries (a
+   BOS/EOS inherited from a base tokenizer, unassigned slots), and an id
+   registered later is suppressed by default. The mask applies to
+   sampling only; tokens the harness places in the context are
+   unaffected.
 
 Change the glyphs freely; keep those three rules and the format's
 guarantees hold.
@@ -210,7 +215,8 @@ An output message:
   input header and decides what goes in it. Some values originate elsewhere
   (an attachment's filename, the model's call id on a `tool_result`), but
   they enter a header only through the harness, which enforces a shape on
-  them first (a call id must match `NAME:COUNTER`, section 5). Content can never place itself
+  them first (a call id must consist entirely of safe characters,
+  section 5). Content can never place itself
   in a header; in particular, `type` is derived from the delivery channel,
   never claimed by the sender. This is what makes the trust model in
   section 7 enforceable.
@@ -250,7 +256,12 @@ A generation burst ends in exactly one of two ways:
    engine to halt at `<|/out|>` or any other control token is a broken
    deployment. A message close is a scheduling point for the harness, not
    the end of the request; an engine stopped there returns a half-finished
-   burst, typically the think without the answer. Anything the harness
+   burst, typically the think without the answer. Nor must an engine halt
+   on an EOS token: no EOS appears in a conversation, and rule 3
+   (section 2) suppresses any legacy EOS id at decode time regardless.
+   The published generation config declares `<|wait|>` as the
+   end-of-sequence id, so a default-configured engine stops correctly
+   without deployment-side changes. Anything the harness
    delivers next resumes the model: a
    tool result, a `user` message, a `harness` notice, an `event`. Open
    tool calls do not change the state: the model waits the same way
@@ -267,8 +278,10 @@ A generation burst ends in exactly one of two ways:
    fragment as inert data. Output that violates message framing (a
    missing `<|hdr|>`, a control token in an illegal position) is treated
    the same way whether or not decoding stopped: the harness discards
-   back to the last complete message and may resume the model with a
-   notice. Engines that support constrained decoding may instead make
+   everything from the first violating token onward, back to the last
+   cleanly closed message, since output after a violation is untrusted
+   even where it happens to parse. The harness may resume the model with
+   a notice. Engines that support constrained decoding may instead make
    ill-formed framing impossible to generate.
 
 A deployment may let the model schedule input for itself: a tool call (a
@@ -352,14 +365,26 @@ result.
 
 Its header carries the id of the call it answers: the harness echoes the
 id from the `tool_call` (section 6) verbatim, guarded by one character
-rule: the id must match `[A-Za-z0-9_:.-]{1,64}` (no spaces, no `=`, so an
-echoed id can never introduce header syntax); anything else is not echoed.
-The model writes ids following the `NAME:COUNTER` convention (section 6),
-but the echo rule deliberately accepts more: ids that entered the
-conversation through an API layer, such as a client replaying its own
-`call_abc123` ids, pass through unchanged, byte for byte. Verbatim echo
-keeps a replayed conversation token-identical to the original, so prefix
-caches stay warm. The id exists purely for
+rule: the id must consist entirely of characters from `[A-Za-z0-9_:.-]`,
+between 1 and 64 of them, matched against the whole id (no spaces, no
+`=`, so an echoed id can never introduce header syntax). The model
+writes ids following the `NAME:COUNTER` convention (section 6), but the
+echo rule deliberately accepts more: ids that entered the conversation
+through an API layer, such as a client replaying its own `call_abc123`
+ids, pass through unchanged, byte for byte. Verbatim echo keeps a
+replayed conversation token-identical to the original, so prefix caches
+stay warm.
+
+A failing id is refused at its origin, never silently dropped. An id
+supplied through an API layer that fails the rule, or that collides with
+the id of a call still open, is rejected with a request error before it
+reaches the token stream. A malformed or colliding id written by the
+model is a framing violation (section 4): the harness discards the call
+message and may resume the model with a notice so it can reissue the
+call. A refused call never stands in the transcript, so the one-result
+rule below is unaffected.
+
+The id exists purely for
 the model's reading of history: the same string at the call site and the
 result site turns "which call does this result answer?" into an exact
 string match instead of counting back through the transcript.
