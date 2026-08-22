@@ -29,6 +29,26 @@ carry, is extensible. New message types can be added without touching the
 tokenizer or this framing; a fine-tune, or a capable model reading
 zero-shot, absorbs them.
 
+**A framework, not one model's format.** This document defines a general
+framework: the framing, the trust model, and the conventions every Apertus
+model shares. A specific model ships its own **profile** on top, naming the
+input and output types it was trained to understand and the capabilities it
+supports. Two models can share this framework and still differ in what they
+can do; a capability described here as possible is not a promise that any
+one model implements it.
+
+**The guiding principle.** Every message carries the content of exactly one
+entity, quarantined by control tokens. The format aims at a strong
+property: against a perfectly capable model, no single participant can craft
+input that is *ambiguous*, that could be read either as their own message or
+as a second participant speaking. Faking another voice must be impossible by
+construction, not merely unlikely. Real models are not perfect and must be
+trained toward this, but the format must never make the distinction
+impossible in the first place. This is why participant content is separated
+only by envelopes, never by in-payload markup (section 9), and why a
+message's header, its routing and trust metadata, is written by the harness
+or the model, never by the content it describes.
+
 ## Worked example
 
 A short conversation: the system prompt, a user question with an inline
@@ -220,6 +240,37 @@ An output message:
   in a header; in particular, `type` is derived from the delivery channel,
   never claimed by the sender. This is what makes the trust model in
   section 7 enforceable.
+- **One author per message.** A message's payload is the content of a
+  single entity: this user, that tool, the model. Structure that would join
+  two entities in one payload, a second speaker, an embedded sub-message, is
+  never written inside a payload; it is expressed as separate enveloped
+  messages. On inputs the header is the harness's privileged annotation over
+  that content; on outputs the model writes its own header, since it is the
+  sole author of its output. This one-author rule is what section 9 relies
+  on and what makes the guiding principle enforceable.
+
+### Addressing
+
+A header names *who*, not only *what*. On an input, a `from=` key can carry
+the harness-stamped identity of the authoring entity; on an output, a `to=`
+key can carry the recipient the model is addressing. Like `type`, these are
+harness-stamped on inputs and model-written on outputs, and content never
+sets them. Two capabilities follow, both optional and profile-gated:
+
+- **More than one participant.** With `from=` and `to=` identifying
+  participants, a single session can carry several users at once, their
+  messages interleaved but never confusable, and one shared context serves
+  all of them instead of duplicating a large common prefix across separate
+  sessions.
+- **Non-linear structure.** A message may also carry its position in a
+  conversation shaped as a tree rather than a line (a threaded chat, a
+  branch point), for instance a key referencing the message it replies to.
+
+The framework permits these; a given model supports them only if its profile
+says so and its training covered them, and the exact key names and formats
+are a profile decision. What the framework fixes is the invariant: every
+distinct voice is a distinct envelope, so identity is carried by
+harness-controlled header fields, never inferred from payload text.
 
 ### Open vocabulary
 
@@ -483,6 +534,12 @@ conversation itself, rank 3 in authority: above all data, below the system
 prompt and `harness` notices. It is delivered last at a boundary
 (section 7): the human gets the last word before the model speaks.
 
+Where a deployment carries several people in one session (section 3,
+addressing), each `user` message is stamped with its author's identity by
+the harness, so the model attributes turns without trusting anything in the
+payload. All of them still share rank 3; identity distinguishes speakers, it
+does not rank them.
+
 ```
 <|in|> type=user <|hdr|> Summarize the attached report. <|/in|>
 ```
@@ -490,24 +547,29 @@ prompt and `harness` notices. It is delivered last at a boundary
 ## 6. OUTPUT types (model to world)
 
 Conventional types; a deployment may add more, and this is a feature: new
-output types let the model drive new channels **without a new template**.
-Future output types follow the same message structure, for example
-`ui_action` (drive the interface), `render` (a canvas), `harness` (speak
-to the harness itself). Each is a routing label the harness dispatches on.
+output types let the model drive new channels **without a new template**. An
+output message is the model addressing a recipient: `assistant` speaks to
+the user, `tool_call` to a tool, and future types to new destinations,
+`ui_action` (the interface), `render` (a canvas), `harness` (the harness
+itself). The `type` is the routing label the harness dispatches on; where a
+deployment needs finer addressing it can name the recipient explicitly
+(section 3, addressing).
 
-Why new types instead of routing everything through tool calls? A tool
-call opens a debt: exactly one result must come back. Channels like these
-are fire-and-forget: nothing answers a rendered canvas, and modeling it as
-a tool would force a meaningless result message into history. A type also
-carries its payload raw, where a tool call would wrap it in JSON escaping,
-and the harness routes on the header alone, without parsing the payload.
+Seen this way a tool call is not a separate mechanism, just an output
+message like any other. What makes it a *tool call* is one property alone:
+it opens a debt, exactly one input message (its `tool_result`) must come
+back to close it. Fire-and-forget outputs like a rendered canvas carry no
+such debt; nothing answers them, and forcing a meaningless result message
+into history to model them as tools would be wrong. A type also carries its
+payload raw, where a tool call would otherwise wrap it in JSON escaping, and
+the harness routes on the header alone, without parsing the payload.
 
 | type | payload | routed to |
 |------|---------|-----------|
 | `assistant` | the reply shown to the user | the user |
 | `think` | reasoning | harness choice: hidden, or shown to the user as a reasoning trace |
-| `tool_call` | tool name + JSON args; the model writes an `id` in the header | the tool runtime |
-| `verifiable_answer` | the verifiable answer to a task, in extractable form | verifiers and graders; ignored by most deployments |
+| `tool_call` | the tool name and its arguments (payload shape set by the profile); header marks the type and carries an `id` | the tool runtime; opens a debt (one `tool_result`) |
+| `verifiable_answer` | the task's answer in extractable form | the harness, as a reward/grading channel; ignored by deployments that do not consume it |
 
 ### `assistant`
 
@@ -540,12 +602,14 @@ one burst. Because control passes to the harness at every message close
 (section 4), execution of the first call can begin while the model is
 still writing the next.
 
-The payload is one JSON object with exactly two keys,
-`{"name": NAME, "args": ARGS}`, where `NAME` is the name of a declared
-tool and `ARGS` conforms to that tool's `<schema>` (section 10). The
-grammar is fixed so that engines can constrain decoding against it: a
-deployment may apply guided decoding to the payload, derived from the
-declared schemas, without any template change.
+The payload carries the tool's name and its arguments; the header marks the
+message as a `tool_call` and carries the correlation `id`, and holds no part
+of the call itself. The exact payload serialization is a profile decision,
+not fixed by the framework, so a model can settle a form that suits its
+training; a common choice is a JSON object such as
+`{"name": NAME, "args": ARGS}` with `ARGS` conforming to the tool's
+`<schema>` (section 10). Where a profile fixes such a grammar, an engine can
+constrain decoding against it, but the framework mandates none.
 
 The model writes an `id` into the header, following the convention
 `id=TOOL_NAME:COUNTER` with one counter global to the conversation. The
@@ -578,10 +642,11 @@ arrives, and the next burst answers and ends with nothing pending.
 
 ### `verifiable_answer`
 
-The verifiable answer to a task, in its extractable form: a channel for
-reinforcement learning with verifiable rewards (RLVR) and automated
-grading, which need the model's claim as a byte-exact payload, never a
-regex match over prose. The payload format (a bare value, JSON, code) is
+The verifiable answer to a task, in its extractable form: an output message
+addressed to the harness as a reward and grading channel for reinforcement
+learning with verifiable rewards (RLVR) and automated grading, which need
+the model's claim as a byte-exact payload, never a regex match over prose.
+The payload format (a bare value, JSON, code) is
 defined by the task's verifier. A task with several verifiable parts
 declares a structured payload with one field per part, and the model emits
 a single `verifiable_answer` carrying all of them: the model learns the
@@ -601,6 +666,21 @@ output types below).
 A `verifiable_answer` persists like `assistant` messages and tool calls
 (memory policy, section 10): it is a committed claim, not private
 reasoning, and is never stripped.
+
+> **Editorial note (to be removed before release; an open training-design
+> discussion, not part of the format).** Framing the verifiable answer as an
+> output addressed to the harness suggests an RL setup worth recording.
+> During RLVR the reward is read at the `verifiable_answer`, and the episode
+> can end there: only the thinking and tool-call traces leading to the
+> answer are reinforced, never an `assistant` message. Turning a correct
+> answer into a user-facing reply is then a separate, parallel-learnable
+> stage: given the reasoning trace, the committed answer, and a prompt
+> (which may ask for an explanation in a particular language, style, or
+> level of expertise), the model produces the `assistant` message, possibly
+> after a second thinking pass on how to present the result. This keeps
+> answer-correctness and answer-presentation as distinct objectives. It
+> belongs in a training/behavior doc, not the format spec; recorded here for
+> discussion.
 
 ```
 <|out|> type=think <|hdr|> 6 times 7, so 42. <|/out|>
@@ -682,6 +762,11 @@ about where the model needs data placed; authority is about whom it trusts.
 If arriving late conferred authority, injected data could gain rank by
 timing; conflating the two axes is exactly how prompt injection works.
 
+Addressing (section 3) is a third, independent axis: which participant a
+message is from or to says nothing about how far it is trusted. Two `user`
+messages from different people share rank 3; the system prompt outranks
+both. Identity routes; it does not confer authority.
+
 ## 8. Multimodal payloads
 
 Media rides as **inline placeholder tokens** inside `user` and `attachment`
@@ -728,6 +813,15 @@ tokens, not reserved tokens**: `<identity>` encodes as `<`, `identity`, `>`.
 The only standardized tags are the canonical system prompt tags
 (section 10). Inside all other payloads the tag vocabulary is deliberately
 unstandardized: harness and model use whatever structure reads well.
+
+This is the concrete face of the guiding principle. Because a user can type
+any tag, `<user>` or `</message>` included, markup inside a payload can never
+mark where one voice ends and another begins: a perfectly capable model
+shown such a payload could not tell a genuine second speaker from the first
+user imitating one. Only control tokens carry that distinction, because only
+the harness can place them (rule 2, section 2). So every separate voice is a
+separate envelope, and structure inside a payload is presentation, never
+attribution or authority.
 
 Never make an XML tag a trust or authority boundary: only control tokens
 delimit messages, and only message types carry rank.
