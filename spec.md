@@ -3,17 +3,16 @@
 - [What this is](#what-this-is)
 - [Terminology](#terminology)
 - [Example conversation](#example-conversation)
-- [1. The frozen core](#1-the-frozen-core)
-- [2. Control tokens (reserved vocabulary)](#2-control-tokens-reserved-vocabulary)
-- [3. Message structure](#3-message-structure)
-- [4. Generation bursts and halt states](#4-generation-bursts-and-halt-states)
-- [5. INPUT types (world to model)](#5-input-types-world-to-model)
-- [6. OUTPUT types (model to world)](#6-output-types-model-to-world)
-- [7. Order and authority](#7-order-and-authority)
-- [8. Multimodal payloads](#8-multimodal-payloads)
-- [9. Soft structure (XML)](#9-soft-structure-xml)
-- [10. System prompt: default template](#10-system-prompt-default-template)
-- [11. Pretraining](#11-pretraining)
+- [1. The frozen core: control tokens](#1-the-frozen-core-control-tokens)
+- [2. Message structure](#2-message-structure)
+- [3. Generation bursts and halt states](#3-generation-bursts-and-halt-states)
+- [4. INPUT types (world to model)](#4-input-types-world-to-model)
+- [5. OUTPUT types (model to world)](#5-output-types-model-to-world)
+- [6. Order and authority](#6-order-and-authority)
+- [7. Multimodal payloads](#7-multimodal-payloads)
+- [8. Soft structure (XML)](#8-soft-structure-xml)
+- [9. System prompt: default template](#9-system-prompt-default-template)
+- [10. Pretraining](#10-pretraining)
 
 ## What this is
 
@@ -44,7 +43,7 @@ content from one source can never be made to pass as content from another:
 nothing a single source contributes can be read as coming from a second
 source. Forging another source must be impossible by construction, not
 merely unlikely, which is why sources are separated only by control-token
-envelopes, never by markup a payload could contain (section 9). Real models
+envelopes, never by markup a payload could contain (section 8). Real models
 are imperfect and must be trained toward this, but the format must never
 make the distinction impossible to begin with.
 
@@ -75,10 +74,10 @@ Terms used throughout this document:
   document, and not to be confused with the `<...>` XML-style tags that
   appear inside payloads (`<identity>`, `<tools>`): those are ordinary
   text, `<`, `identity`, `>`, with no special status, used only to
-  organize content (section 9).
+  organize content (section 8).
 - **Message**: the basic unit of the conversation, wrapped in an opening
   and a closing control token. Inside, it always consists of a header
-  followed by a payload (section 3). The opening/closing control-token pair
+  followed by a payload (section 2). The opening/closing control-token pair
   is the message's **envelope**. Every message is one of two kinds, and the
   envelope tells which:
   - an **input message** (`<|in|> ... <|/in|>`) is fed into the model as
@@ -90,14 +89,14 @@ Terms used throughout this document:
 - **Header**: the metadata region of a message. Opaque to the framework;
   its format is set by the model's profile and typically says what kind of
   message this is, who it is from or to, or where it sits in the
-  conversation (section 3). On inputs the harness writes it; on outputs the
+  conversation (section 2). On inputs the harness writes it; on outputs the
   model does.
 - **Payload**: the content region of a message.
 - **Generation burst**: one stretch of decoding, from the harness handing
   control to the model until the model emits the wait token `<|wait|>` (or
-  stops abnormally, section 4). Brief returns of control at message closes,
+  stops abnormally, section 3). Brief returns of control at message closes,
   including spliced-in input, do not end a burst; only the stop does.
-- **Harness notice**: an input message of type `harness` (section 5): the
+- **Harness notice**: an input message of type `harness` (section 4): the
   harness speaking as itself.
 - **Padding**: filler tokens used when sequences of different lengths are
   batched into one fixed-size tensor (mainly in training). `<|pad|>` fills
@@ -170,73 +169,52 @@ What it shows:
   the last after the reply.
 
 In the actual token sequence, `<|image|>` is the expanded `<|img_start|> ...
-<|img_end|>` sequence from section 8; the placeholder is shown for
+<|img_end|>` sequence from section 7; the placeholder is shown for
 readability.
 
 ---
 
-## 1. The frozen core
+## 1. The frozen core: control tokens
 
-Only these things are fixed:
+A control token is a **single registered token ID** in the tokenizer,
+written as a readable ASCII word. There are few of them, and they are the
+only part of the format that never changes:
 
-- **input** messages (world to model),
-- **output** messages (model to world),
-- a **header terminator** inside every message,
-- the **wait token** (ends every generation burst),
-- the **multimodal expansion tokens** (section 8),
-- **padding**.
-
-Everything else, meaning every message type and every header, lives inside
-messages. The format can gain new types without a change to this section. The
-system prompt is one such kind, a `system` input (section 5), not a
-structural primitive.
-
-## 2. Control tokens (reserved vocabulary)
-
-Each control token is a **single registered token ID** in the tokenizer,
-written as a readable ASCII word.
-
-The tokens are unforgeable **by pipeline, not by obscurity**: all external
-or untrusted text is encoded with special-token parsing disabled. A user or
-tool that types the literal string `<|in|>` produces ordinary character
-tokens (`<`, `|`, `in`, ...), never the control token. Knowing the glyphs
-does not help an attacker; only the harness can place control tokens.
-
-| Token | Meaning |
-|-------|---------|
-| `<\|in\|>` ... `<\|/in\|>`   | input message open / close (the system prompt is a `system` input) |
-| `<\|out\|>` ... `<\|/out\|>` | output message open / close |
+| Token | Role |
+|-------|------|
+| `<\|in\|>` ... `<\|/in\|>`   | envelope of an input message (fed into the model) |
+| `<\|out\|>` ... `<\|/out\|>` | envelope of an output message (generated by the model) |
 | `<\|hdr\|>` | header terminator: ends the header, begins the payload |
-| `<\|wait\|>` | ends every generation burst: the model hands control to the harness and waits |
-| `<\|pad\|>` | padding; legal only between messages, never inside one |
-| `<\|image\|>`, `<\|audio\|>` | inline media placeholders (section 8) |
-| `<\|img_start\|>`, `<\|img_token_start\|>`, `<\|img_end_of_row\|>`, `<\|img_end\|>` | image expansion structure (section 8) |
-| `<\|audio_start\|>`, `<\|audio_end\|>` | audio expansion structure (section 8) |
+| `<\|wait\|>` | ends a generation burst: the model hands control to the harness and waits |
+| `<\|pad\|>` | padding between messages; it never appears inside one |
+| `<\|image\|>`, `<\|audio\|>` | inline media placeholders (section 7) |
+| `<\|img_start\|>`, `<\|img_token_start\|>`, `<\|img_end_of_row\|>`, `<\|img_end\|>` | image expansion structure (section 7) |
+| `<\|audio_start\|>`, `<\|audio_end\|>` | audio expansion structure (section 7) |
 
-The surface forms above are only a recommendation. The three normative
-rules are:
+Everything else lives in the header and is the profile's to define
+(section 2): what kind of message something is, who it is from or to, where
+it sits. New kinds of message need no change here. The system prompt is one
+such kind, a `system` input (section 4), and has no dedicated token.
 
-1. each control token is one registered special-token ID, never assembled
-   from characters;
+### Why control tokens cannot be forged
+
+All external or untrusted text is encoded with special-token parsing
+disabled. A user or tool that types the literal string `<|in|>` produces
+the ordinary character tokens `<`, `|`, `in`, and so on. Knowing the glyphs
+therefore does not help an attacker: only the harness can place a control
+token, because only the harness encodes with special-token parsing on.
+
+The surface forms above are a recommendation. What the format depends on
+are three rules:
+
+1. each control token is one registered special-token ID;
 2. untrusted text is always encoded with special tokens disabled;
-3. the model's sampled vocabulary contains exactly four control tokens:
-   `<|out|>`, `<|/out|>`, `<|hdr|>`, and `<|wait|>`; engines suppress
-   every other registered special id at decode time. An allowlist, not a
-   blocklist: it covers the input framing (`<|in|>`, `<|/in|>`, including
-   the system prompt), `<|pad|>`, the
-   media tokens, and any reserved or legacy id the tokenizer carries (a
-   BOS/EOS inherited from a base tokenizer, unassigned slots), and an id
-   registered later is suppressed by default. The mask applies to
-   sampling only; tokens the harness places in the context are
-   unaffected.
+3. at decode time the model may emit only four control tokens, `<|out|>`,
+   `<|/out|>`, `<|hdr|>`, and `<|wait|>`; the engine suppresses every other
+   registered special id. This applies to sampling only: tokens the harness
+   places in the context are unaffected.
 
-Change the glyphs freely; keep those three rules and the format's
-guarantees hold.
-
-The same inventory serves pretraining: documents are framed as messages
-rather than separated by dedicated BOS/EOS tokens (section 11).
-
-## 3. Message structure
+## 2. Message structure
 
 A message is either an input or an output, never both; the two share the
 same internal layout. An input message:
@@ -266,7 +244,7 @@ An output message:
   headers in one such format, a leading word for the kind of message
   followed by optional `key=value` pairs, and uses it to cover the kinds
   every deployment has today: `system`, `user`, `attachment`, `tool_result`,
-  `think`, `tool_call`, `assistant`, and so on (sections 5 and 6). Well-named
+  `think`, `tool_call`, `assistant`, and so on (sections 4 and 5). Well-named
   kinds stay readable zero-shot (`calendar_invite`), and a profile may shape
   headers differently.
 - **Input headers are under harness control.** The harness writes every
@@ -274,17 +252,17 @@ An output message:
   (an attachment's filename, the model's call id on a `tool_result`), but
   they enter a header only through the harness, which enforces a shape on
   them first (a call id must consist entirely of safe characters,
-  section 5). Content can never place itself
+  section 4). Content can never place itself
   in a header; in particular, what kind of message it is derives from the
   delivery channel, never from a claim by the sender. This is what makes the
-  trust model in section 7 enforceable.
+  trust model in section 6 enforceable.
 - **One source per message.** A message's payload is the content of a
   single source: this user, that tool, the model. Structure that would join
   two sources in one payload, a quoted message, an embedded sub-message, is
   never written inside a payload; it is expressed as separate enveloped
   messages. On inputs the header is the harness's privileged annotation over
   that content; on outputs the model writes its own header, since it is the
-  sole author of its output. This one-author rule is what section 9 relies
+  sole author of its output. This one-author rule is what section 8 relies
   on and what makes the guiding principle enforceable.
 
 ### Addressing
@@ -318,7 +296,7 @@ unfamiliar kind zero-shot by reading its name and payload; where that is not
 reliable, a fine-tune covers that one kind. The framing is a stable
 substrate; header formats are profiles on top of it.
 
-## 4. Generation bursts and halt states
+## 3. Generation bursts and halt states
 
 The conversation has two writers alternating at message boundaries: the
 harness writes input messages, the model generates output messages.
@@ -328,7 +306,7 @@ harness writes input messages, the model generates output messages.
 - After every message close (`<|/out|>` or `<|/in|>`), control passes
   briefly to the harness. If input is ready (a queued user message, a tool
   result, a `harness` notice), the harness appends it, in canonical order
-  (section 7), before the model continues; if nothing is pending, the
+  (section 6), before the model continues; if nothing is pending, the
   model continues uninterrupted. These brief pauses are harness
   scheduling; they do not end the burst.
 - Because input can be appended at any message boundary, the model must
@@ -347,7 +325,7 @@ A generation burst ends in exactly one of two ways:
    the end of the request; an engine stopped there returns a half-finished
    burst, typically the think without the answer. Nor must an engine halt
    on an EOS token: no EOS appears in a conversation, and rule 3
-   (section 2) suppresses any legacy EOS id at decode time regardless.
+   (section 1) suppresses any legacy EOS id at decode time regardless.
    The published generation config declares `<|wait|>` as the
    end-of-sequence id, so a default-configured engine stops correctly
    without deployment-side changes. Anything the harness
@@ -355,7 +333,7 @@ A generation burst ends in exactly one of two ways:
    tool result, a `user` message, a `harness` notice, an `event`. Open
    tool calls do not change the state: the model waits the same way
    whether or not results are still owed (a call stays open until its
-   result arrives, section 5), and results may arrive together or across
+   result arrives, section 4), and results may arrive together or across
    several resumptions. `<|wait|>` encodes readiness, not
    expectation: a reply ending in a question and one ending in a statement
    close identically.
@@ -378,7 +356,7 @@ timer, a reminder) that causes the harness to deliver a message later,
 which resumes the model like any other input. How such a mechanism works
 is out of scope; the spec defines only how the occurrence enters the
 conversation: as an `event`, as a `harness` notice when the harness itself
-speaks about it, or as a new input type the deployment defines (section 3,
+speaks about it, or as a new input type the deployment defines (section 2,
 open header).
 
 ### Another user message
@@ -393,16 +371,16 @@ finishes the message it is writing, and a completed message is never
 discarded (the only discard path is the abnormal stop above). If such a
 user message invalidates a
 pending tool call, the result is still delivered (canonical order,
-section 7) and the model is free to disregard it.
+section 6) and the model is free to disregard it.
 
-## 5. INPUT types (world to model)
+## 4. INPUT types (world to model)
 
 Conventional types; a deployment may add more. The table is sorted by the
-canonical delivery order; order and authority are defined in section 7.
+canonical delivery order; order and authority are defined in section 6.
 
 | type | carries | order | authority |
 |------|---------|-------|-----------|
-| `system` | the standing instructions: identity, behavior, tools, effort (section 10); persistent, edited in place | 0 (preamble) | 1 |
+| `system` | the standing instructions: identity, behavior, tools, effort (section 9); persistent, edited in place | 0 (preamble) | 1 |
 | `harness` | the harness speaking **as itself**: transient notices, never state | 1 | 2 |
 | `tool_result` | the result for a pending `tool_call`; its header echoes the call's id | 2 | 4 (data) |
 | `retrieval` | evidence pushed by an external search/RAG system the model did not call | 3 | 4 (data) |
@@ -412,7 +390,7 @@ canonical delivery order; order and authority are defined in section 7.
 
 Only the `type` (and any other header keys) exists in the token stream. The
 order and authority columns describe harness behavior and the trust ranking
-of section 7, not fields in the message. There is no origin field: the
+of section 6, not fields in the message. There is no origin field: the
 channel is exactly what the harness encodes when it stamps `type`.
 
 A message's `type` names its **delivery channel and container**, not a
@@ -426,16 +404,16 @@ which the model needs for relevance and trust judgments.
 ### `system`
 
 The standing context every other message is read against: identity,
-behavior, the tool inventory, and effort (section 10 gives the default
+behavior, the tool inventory, and effort (section 9 gives the default
 template). It is an ordinary input in structure, but unlike the others it is
 not delivered at a boundary; it opens the sequence and persists, edited in
 place by the harness rather than re-sent, which keeps the prefix cache warm.
-It is the single highest authority, rank 1 (section 7): nothing overrides it.
+It is the single highest authority, rank 1 (section 6): nothing overrides it.
 
 ### `harness`
 
 The harness speaking **as itself**: every byte of the payload is
-harness-authored, and it may carry authority (rank 2, section 7): it can
+harness-authored, and it may carry authority (rank 2, section 6): it can
 steer the model but never repeal the system prompt.
 
 `harness` messages never restate prompt state. State lives in the system
@@ -463,11 +441,11 @@ for it and owns the query. Each `tool_result` message carries exactly one
 result.
 
 Its header carries the id of the call it answers: the harness echoes the
-id from the `tool_call` (section 6) verbatim, guarded by one character
+id from the `tool_call` (section 5) verbatim, guarded by one character
 rule: the id must consist entirely of characters from `[A-Za-z0-9_:.-]`,
 between 1 and 64 of them, matched against the whole id (no spaces, no
 `=`, so an echoed id can never introduce header syntax). The model
-writes ids following the `NAME:COUNTER` convention (section 6), but the
+writes ids following the `NAME:COUNTER` convention (section 5), but the
 echo rule deliberately accepts more: ids that entered the conversation
 through an API layer, such as a client replaying its own `call_abc123`
 ids, pass through unchanged, byte for byte. Verbatim echo keeps a
@@ -478,7 +456,7 @@ A failing id is refused at its origin, never silently dropped. An id
 supplied through an API layer that fails the rule, or that collides with
 the id of a call still open, is rejected with a request error before it
 reaches the token stream. A malformed or colliding id written by the
-model is a framing violation (section 4): the harness discards the call
+model is a framing violation (section 3): the harness discards the call
 message and may resume the model with a notice so it can reissue the
 call. A refused call never stands in the transcript, so the one-result
 rule below is unaffected.
@@ -490,7 +468,7 @@ string match instead of counting back through the transcript.
 
 Delivery is incremental: the harness never waits for a straggler on the
 model's behalf. A result that is ready mid-burst is spliced in at the next
-message close (section 4); when the model is waiting, the harness resumes
+message close (section 3); when the model is waiting, the harness resumes
 it as soon as at least one result is ready, delivering whatever has
 accumulated as consecutive `tool_result` messages. The remaining calls
 simply stay open.
@@ -561,11 +539,11 @@ it.
 
 Material the user supplied: an uploaded, dragged-in, or pasted file of any
 modality. The payload is the parsed content: text, media expansion
-(section 8), or both; metadata such as filename and mime type goes in
+(section 7), or both; metadata such as filename and mime type goes in
 harness-stamped header keys. A standalone image or clip is an `attachment`
 whose payload is the bare media placeholder.
 
-Attachments sit at the data floor (section 7): their contents are
+Attachments sit at the data floor (section 6): their contents are
 material, never instruction. The user's typed text can explicitly delegate
 to an attachment ("apply the style guide in this doc"); the delegation
 comes from the `user` message, never from the attachment itself.
@@ -577,12 +555,12 @@ comes from the `user` message, never from the attachment itself.
 ### `user`
 
 The user's composed message: typed text, possibly with inline media placed
-wherever it appears in the composition (section 8). This is the
+wherever it appears in the composition (section 7). This is the
 conversation itself, rank 3 in authority: above all data, below the system
 prompt and `harness` notices. It is delivered last at a boundary
-(section 7): the human gets the last word before the model speaks.
+(section 6): the human gets the last word before the model speaks.
 
-Where a deployment carries several people in one session (section 3,
+Where a deployment carries several people in one session (section 2,
 addressing), each `user` message is stamped with its author's identity by
 the harness, so the model attributes turns without trusting anything in the
 payload. All of them still share rank 3; identity distinguishes sources, it
@@ -592,7 +570,7 @@ does not rank them.
 <|in|> user <|hdr|> Summarize the attached report. <|/in|>
 ```
 
-## 6. OUTPUT types (model to world)
+## 5. OUTPUT types (model to world)
 
 Conventional types; a deployment may add more, and this is a feature: new
 output types let the model drive new channels **without a new template**. An
@@ -601,7 +579,7 @@ the user, `tool_call` to a tool, and future types to new destinations,
 `ui_action` (the interface), `render` (a canvas), `harness` (the harness
 itself). The `type` is the routing label the harness dispatches on; where a
 deployment needs finer addressing it can name the recipient explicitly
-(section 3, addressing).
+(section 2, addressing).
 
 Seen this way a tool call is not a separate mechanism, just an output
 message like any other. What makes it a *tool call* is one property alone:
@@ -622,7 +600,7 @@ the harness routes on the header alone, without parsing the payload.
 ### `assistant`
 
 The model's reply to the user. The payload is not restricted to plain
-text: it may carry soft structure (section 9) that the interface renders,
+text: it may carry soft structure (section 8) that the interface renders,
 for example an HTML tag that loads an image. Future multimodal replies
 therefore need a renderer change, not a template change.
 
@@ -634,7 +612,7 @@ therefore need a renderer change, not a template change.
 
 The model's reasoning. Whether it is shown to the user as a reasoning
 trace or hidden is harness choice; retention follows the memory policy
-(section 10): think messages from completed turns are stripped, so
+(section 9): think messages from completed turns are stripped, so
 conclusions the model must keep across turns should land in `assistant`
 messages or tool calls, not in think.
 
@@ -647,7 +625,7 @@ messages or tool calls, not in think.
 One call to one tool. Each `tool_call` message carries **exactly one
 call**; a parallel batch is several consecutive `tool_call` messages in
 one burst. Because control passes to the harness at every message close
-(section 4), execution of the first call can begin while the model is
+(section 3), execution of the first call can begin while the model is
 still writing the next.
 
 The payload carries the tool's name and its arguments; the header marks the
@@ -656,14 +634,14 @@ of the call itself. The exact payload serialization is a profile decision,
 not fixed by the framework, so a model can settle a form that suits its
 training; a common choice is a JSON object such as
 `{"name": NAME, "args": ARGS}` with `ARGS` conforming to the tool's
-`<schema>` (section 10). Where a profile fixes such a grammar, an engine can
+`<schema>` (section 9). Where a profile fixes such a grammar, an engine can
 constrain decoding against it, but the framework mandates none.
 
 The model writes an `id` into the header, following the convention
 `id=TOOL_NAME:COUNTER` with one counter global to the conversation. The
 convention is trivially continuable: the next id is the previous counter
 plus one, whatever the tool. The harness echoes the id on the matching
-`tool_result` (section 5).
+`tool_result` (section 4).
 
 Examples, including two calls in one burst:
 
@@ -712,7 +690,7 @@ that do not consume `verifiable_answer` messages ignore them (see Unknown
 output types below).
 
 A `verifiable_answer` persists like `assistant` messages and tool calls
-(memory policy, section 10): it is a committed claim, not private
+(memory policy, section 9): it is a committed claim, not private
 reasoning, and is never stripped.
 
 > **Editorial note (to be removed before release; an open training-design
@@ -761,9 +739,9 @@ can recover, or it may simply ignore the message. A **known but
 unconsumed** type (a conventional type this deployment deliberately does
 not consume) is not an error: the message is inert, and no notice is
 raised. Decoding is never interrupted in either case; generation stops
-only at the wait token (section 4).
+only at the wait token (section 3).
 
-## 7. Order and authority
+## 6. Order and authority
 
 ### Canonical input order (when several land at one boundary)
 
@@ -780,7 +758,7 @@ Frame first, then answers to pending calls, then pushed data, then the
 user's material, and the user's own words last, closest to the model's
 reply: the human gets the last word before the model speaks.
 
-Deployment-defined types (section 3, open header) are placed by the
+Deployment-defined types (section 2, open header) are placed by the
 deployment; absent a stated choice, they are delivered with the pushed data
 at position 3.
 
@@ -810,12 +788,12 @@ about where the model needs data placed; authority is about whom it trusts.
 If arriving late conferred authority, injected data could gain rank by
 timing; conflating the two axes is exactly how prompt injection works.
 
-Addressing (section 3) is a third, independent axis: which source a
+Addressing (section 2) is a third, independent axis: which source a
 message is from or to says nothing about how far it is trusted. Two `user`
 messages from different people share rank 3; the system prompt outranks
 both. Identity routes; it does not confer authority.
 
-## 8. Multimodal payloads
+## 7. Multimodal payloads
 
 Media rides as **inline placeholder tokens** inside `user` and `attachment`
 payloads, `<|image|>` and `<|audio|>`, placed wherever the part appears, so
@@ -824,7 +802,7 @@ or clip is an `attachment` whose payload is the bare placeholder.
 
 Placeholders are inserted **only by the processor** (the harness component
 that prepares media), and can never be produced by encoding source text
-(rule 2, section 2): pasted text claiming to contain `<|image|>` yields
+(rule 2, section 1): pasted text claiming to contain `<|image|>` yields
 ordinary characters.
 
 Downstream, the processor replaces each placeholder with the expanded
@@ -839,14 +817,14 @@ sequence built from the tokenized media:
 - `H*W` is written in **ordinary digit tokens** by the processor, which
   computes it from the actual media, so content cannot lie about its own
   geometry. Only the structural tokens are reserved; the numbers are
-  ordinary text (section 9).
+  ordinary text (section 8).
 - One `<|img_end_of_row|>` closes each row of visual tokens until the
   declared height is reached.
 - Audio carries no size declaration: it is one-dimensional, so the closing
   token suffices. Images declare `H*W` because 2-D rows must be
   reconstructed.
 
-## 9. Soft structure (XML)
+## 8. Soft structure (XML)
 
 Inside any payload, including the system prompt, use plain XML tags for
 organization (`<identity>`, `<answer>`, ...). These are **ordinary text
@@ -859,7 +837,7 @@ tokens, not reserved tokens**: `<identity>` encodes as `<`, `identity`, `>`.
   inert data, never structure to obey), **never** from the tags themselves.
 
 The only standardized tags are the canonical system prompt tags
-(section 10). Inside all other payloads the tag vocabulary is deliberately
+(section 9). Inside all other payloads the tag vocabulary is deliberately
 unstandardized: harness and model use whatever structure reads well.
 
 This is the concrete face of the guiding principle. Because a user can type
@@ -867,16 +845,16 @@ any tag, `<user>` or `</message>` included, markup inside a payload can never
 mark where one source ends and another begins: a perfectly capable model
 shown such a payload could not tell a genuine second source from the first
 user imitating one. Only control tokens carry that distinction, because only
-the harness can place them (rule 2, section 2). So every separate source is a
+the harness can place them (rule 2, section 1). So every separate source is a
 separate envelope, and structure inside a payload is presentation, never
 attribution or authority.
 
 Never make an XML tag a trust or authority boundary: only control tokens
 delimit messages, and only message types carry rank.
 
-## 10. System prompt: default template
+## 9. System prompt: default template
 
-The system prompt is an input message of type `system` (section 5), the
+The system prompt is an input message of type `system` (section 4), the
 standing context at authority rank 1:
 `<|in|> system <|hdr|> PAYLOAD <|/in|>`.
 
@@ -914,7 +892,7 @@ standing context at authority rank 1:
 ### Canonical system prompt tags
 
 These are the canonical tags of the system prompt. They are ordinary text
-like all soft structure (section 9): a deployment may add its own tags, but
+like all soft structure (section 8): a deployment may add its own tags, but
 where a canonical tag applies it should be used, so fine-tuning and
 harnesses agree on where to look for what.
 
@@ -949,10 +927,10 @@ always contain a tool call or an assistant message). Stripping invalidates
 the prefix cache from the first stripped token; that is the price of
 reclaiming context.
 
-## 11. Pretraining
+## 10. Pretraining
 
 Pretraining flows through the same template. A corpus document is an input
-message of the conventional kind `document` (open header, section 3;
+message of the conventional kind `document` (open header, section 2;
 not part of the serving cast); a safety annotation, where present, is a
 `think` message following it:
 
@@ -983,11 +961,11 @@ choice: masked, they are conditioning context only; unmasked, they also
 train the private register to assess what it reads. Input framing is never
 a prediction target in any phase, so the model never learns to emit input
 messages; engines must additionally suppress input control tokens at
-decode time (section 2). Document payloads are ordinary language-modeling
+decode time (section 1). Document payloads are ordinary language-modeling
 targets. Output
 messages are the model's own: their framing, header included, is an
 ordinary prediction target wherever the message itself carries loss.
-Memory and visibility policies (sections 6 and 10) are serving-time
+Memory and visibility policies (sections 5 and 9) are serving-time
 properties enforced by a harness; pretraining has no harness, so none
 apply.
 
