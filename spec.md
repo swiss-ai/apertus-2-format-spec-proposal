@@ -27,8 +27,11 @@ directions of the exchange.
 
 Structurally it rests on one choice: **fixed framing, open header**. Every
 message is an envelope, a reserved control token opening it and another
-closing it, with a header and a payload inside. That envelope structure and
-the handful of control tokens never change. What the header says about a
+closing it, with a header and a payload inside, and it is one of exactly two
+kinds: an **input** message, written by the harness, flowing from the world
+to the model, or an **output** message, written by the model, flowing back.
+That envelope structure, the input/output split, and the handful of control
+tokens never change. What the header says about a
 message, who it is from, what kind of message it is, where it sits in the
 conversation, is open: it is decided by the model's profile, a harness is
 tuned to that profile's header format, and new kinds of message are added
@@ -77,7 +80,14 @@ Terms used throughout this document:
 - **Message**: the basic unit of the conversation, wrapped in an opening
   and a closing control token. Inside, it always consists of a header
   followed by a payload (section 3). The opening/closing control-token pair
-  is the message's **envelope**.
+  is the message's **envelope**. Every message is one of two kinds, and the
+  envelope tells which:
+  - an **input message** (`<|in|> ... <|/in|>`) flows from the world to the
+    model: a user turn, a tool result, the system prompt. The harness writes
+    it, header included.
+  - an **output message** (`<|out|> ... <|/out|>`) flows from the model to
+    the world: its reasoning, a tool call, a reply. The model writes it,
+    header included.
 - **Header**: the metadata region of a message. Opaque to the framework;
   its format is set by the model's profile and typically says what kind of
   message this is, who it is from or to, or where it sits in the
