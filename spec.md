@@ -54,10 +54,11 @@ in-payload markup (section 9).
 ## Worked example
 
 A short conversation: the system prompt, a user question with an inline
-image, then the model thinks, calls a tool, receives the result **and** a
-second user message that arrived while it was working, thinks again, and
-answers. Every convention it uses is defined in the sections below; this
-example just shows the overall shape.
+image, then the model thinks, calls a tool, and waits. A second user message
+arrives while the call is still open; the model takes it in, keeps waiting,
+and once the result comes back it thinks again and answers. Every convention
+it uses is defined in the sections below; this example just shows the overall
+shape.
 
 ```
 <|sys|>
@@ -78,9 +79,12 @@ example just shows the overall shape.
 <|out|> type=tool_call id=get_weather:0 <|hdr|> {"name":"get_weather","args":{"city":"Lisbon"}} <|/out|>
 <|wait|>
 
-<|in|> type=tool_result id=get_weather:0 <|hdr|> {"tempC":19,"cond":"light rain","wind":"20kph"} <|/in|>
-
 <|in|> type=user <|hdr|> oh also, I'll be walking a lot, not taking taxis <|/in|>
+
+<|out|> type=think <|hdr|> Noted, walking not taxis. Still waiting on the weather before I answer. <|/out|>
+<|wait|>
+
+<|in|> type=tool_result id=get_weather:0 <|hdr|> {"tempC":19,"cond":"light rain","wind":"20kph"} <|/in|>
 
 <|out|> type=think <|hdr|> 19C, light rain, breezy. The photo shows short
 sleeves, so a warm layer plus a water-resistant jacket. And since they'll be
@@ -109,11 +113,11 @@ tags are soft structure that anyone could type.
 
 What it demonstrates: an inline image inside
 a `user` message; the model-written `id=get_weather:0` on the call, echoed
-by the harness on the result; the interleaving of a `tool_result` and a
-`user` message, each self-wrapped, in canonical order; and `<|wait|>`
-closing both generation bursts, the first while the tool call was still
-open, the second after a think, a call, a result, a second user message,
-another think, and the answer.
+by the harness on the result; the interleaving of the input streams, a
+`user` message delivered while the tool call is still open, before the
+`tool_result` that answers it, each self-wrapped; and `<|wait|>` closing
+every generation burst, the first two with the call still open (the model
+re-planning when the user message lands), the last after the answer.
 
 ## Vocabulary
 
