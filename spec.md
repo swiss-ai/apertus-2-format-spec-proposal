@@ -7,7 +7,7 @@
 - [2. Message structure](#2-message-structure)
 - [3. Generation](#3-generation)
 - [4. Input messages](#4-input-messages)
-- [5. OUTPUT types (model to world)](#5-output-types-model-to-world)
+- [5. Output messages](#5-output-messages)
 - [6. Order and authority](#6-order-and-authority)
 - [7. Multimodal payloads](#7-multimodal-payloads)
 - [8. Soft structure (XML)](#8-soft-structure-xml)
@@ -472,80 +472,85 @@ payload; all of them share rank 3.
 <|in|> user <|hdr|> Summarize the attached report. <|/in|>
 ```
 
-## 5. OUTPUT types (model to world)
+## 5. Output messages
 
-Conventional types; a deployment may add more, and this is a feature: new
-output types let the model drive new channels **without a new template**. An
-output message is the model addressing a recipient: `assistant` speaks to
-the user, `tool_call` to a tool, and future types to new destinations,
-`ui_action` (the interface), `render` (a canvas), `harness` (the harness
-itself). The kind is the routing label the harness dispatches on; where a
-deployment needs finer addressing, the header can name the recipient
-(section 2).
+An output message is the model addressing a recipient. These are the
+conventional types, the ones this document uses in its examples; they are a
+reference set, and a model's profile may add types or drop some
+(section 2). New types let the model address new receivers, a canvas,
+the interface, the harness itself, and support other innovations, with no
+change to the framing. The following are the canonical choices at the
+moment.
 
-Seen this way a tool call is not a separate mechanism, just an output
-message like any other. What makes it a *tool call* is one property alone:
-it opens a debt, exactly one input message (its `tool_result`) must come
-back to close it. Fire-and-forget outputs like a rendered canvas carry no
-such debt; nothing answers them, and forcing a meaningless result message
-into history to model them as tools would be wrong. A type also carries its
-payload raw, where a tool call would otherwise wrap it in JSON escaping, and
-the harness routes on the header alone, without parsing the payload.
+| type | carries | addressed to |
+|------|---------|--------------|
+| `think` | the model's reasoning | the harness, which shows or hides it |
+| `assistant` | the reply | the user |
+| `verifiable_answer` | the task's answer in extractable form | the harness, as a grading channel |
+| `tool_call` | a call to one tool: its name and arguments | the tool runtime |
 
-| type | payload | routed to |
-|------|---------|-----------|
-| `assistant` | the reply shown to the user | the user |
-| `think` | reasoning | harness choice: hidden, or shown to the user as a reasoning trace |
-| `tool_call` | the tool name and its arguments (payload shape set by the profile); header marks the type and carries an `id` | the tool runtime; opens a debt (one `tool_result`) |
-| `verifiable_answer` | the task's answer in extractable form | the harness, as a reward/grading channel; ignored by deployments that do not consume it |
+### One distinction: does an answer come back?
 
-### `assistant`
-
-The model's reply to the user. The payload is not restricted to plain
-text: it may carry soft structure (section 8) that the interface renders,
-for example an HTML tag that loads an image. Future multimodal replies
-therefore need a renderer change, not a template change.
-
-```
-<|out|> assistant <|hdr|> Lisbon will be warmer than Porto today. <|/out|>
-```
+All four share the same structure. What sets `tool_call` apart is a single
+property: it **opens a debt**. Exactly one input message, its
+`tool_result`, must come back to close it (section 4). The other three
+answer nothing; a reply, a thinking trace, a committed answer, a rendered
+canvas are fire-and-forget. Modeling such outputs as tool calls would force
+a meaningless result message into the sequence, which is why they are
+types of their own.
 
 ### `think`
 
-The model's reasoning. Whether it is shown to the user as a reasoning
-trace or hidden is harness choice; retention follows the memory policy
-(section 9): think messages from completed turns are stripped, so
-conclusions the model must keep across turns should land in `assistant`
-messages or tool calls, not in think.
+The model's reasoning. Whether the harness shows it to the user or keeps it
+hidden is the harness's choice. Think messages from completed turns are
+stripped under the memory policy (section 9), so a conclusion the model
+must keep across turns belongs in an `assistant` message or a tool call.
 
 ```
 <|out|> think <|hdr|> Two constraints conflict; re-read the schema before answering. <|/out|>
 ```
 
+### `assistant`
+
+The model's reply to the user. The payload may carry soft structure
+(section 8) that the interface renders, an HTML tag that loads an image for
+instance, so a new kind of reply needs a renderer change and nothing from
+the format.
+
+```
+<|out|> assistant <|hdr|> Lisbon will be warmer than Porto today. <|/out|>
+```
+
+### `verifiable_answer`
+
+The answer to a task, in the byte-exact form its verifier defines: a bare
+value, JSON, code. It is a channel for automated grading and for
+reinforcement learning with verifiable rewards, which need the model's
+claim as a payload to parse rather than a span to find in prose. A task
+with several verifiable parts declares a structured payload with one field
+per part. The answer comes after the reasoning and tool calls it rests on
+and before the `assistant` reply, so the reply presents a claim already in
+context instead of deriving it again. It persists like a reply (section 9).
+
+```
+<|out|> think <|hdr|> Adding the equations gives x = 3, so y = -2. <|/out|>
+
+<|out|> verifiable_answer <|hdr|> {"x": 3, "y": -2} <|/out|>
+
+<|out|> assistant <|hdr|> Solving the system gives x = 3 and y = -2. <|/out|>
+<|wait|>
+```
+
 ### `tool_call`
 
-One call to one tool. Each `tool_call` message carries **exactly one
-call**; a parallel batch is several consecutive `tool_call` messages in
-one burst. Because control passes to the harness at every message close
-(section 3), execution of the first call can begin while the model is
-still writing the next.
-
-The payload carries the tool's name and its arguments; the header marks the
-message as a `tool_call` and carries the correlation `id`, and holds no part
-of the call itself. The exact payload serialization is a profile decision,
-not fixed by the framework, so a model can settle a form that suits its
-training; a common choice is a JSON object such as
-`{"name": NAME, "args": ARGS}` with `ARGS` conforming to the tool's
-`<schema>` (section 9). Where a profile fixes such a grammar, an engine can
-constrain decoding against it, but the framework mandates none.
-
-The model writes an `id` into the header, following the convention
-`id=TOOL_NAME:COUNTER` with one counter global to the conversation. The
-convention is trivially continuable: the next id is the previous counter
-plus one, whatever the tool. The harness echoes the id on the matching
-`tool_result` (section 4).
-
-Examples, including two calls in one burst:
+One call to one tool. A parallel batch is several consecutive `tool_call`
+messages in one burst, and since control returns to the harness at every
+message close (section 3), the first call can be executing while the model
+writes the next. The payload carries the tool's name and its arguments; the
+header carries the call's id and nothing else of the call. How the payload
+is serialized is the profile's decision, a JSON object with the name and
+the arguments being the common choice, and where a profile fixes such a
+grammar an engine can constrain decoding against it.
 
 ```
 <|out|> think <|hdr|> Compare the two cities; fetch both in parallel. <|/out|>
@@ -563,85 +568,53 @@ Examples, including two calls in one burst:
 <|wait|>
 ```
 
-Execution begins at each call's close: the Lisbon result was ready so fast
-that the harness spliced it in before the model wrote the Porto call. The
-`<|wait|>` then ends the burst with one call still open; the Porto result
-arrives, and the next burst answers and ends with nothing pending.
+The Lisbon result was ready before the model wrote the Porto call, so the
+harness spliced it in. `<|wait|>` then ends the burst with one call still
+open; the Porto result arrives, and the next burst answers.
 
-### `verifiable_answer`
+### Tool call ids
 
-The verifiable answer to a task, in its extractable form: an output message
-addressed to the harness as a reward and grading channel for reinforcement
-learning with verifiable rewards (RLVR) and automated grading, which need
-the model's claim as a byte-exact payload, never a regex match over prose.
-The payload format (a bare value, JSON, code) is
-defined by the task's verifier. A task with several verifiable parts
-declares a structured payload with one field per part, and the model emits
-a single `verifiable_answer` carrying all of them: the model learns the
-expected shape from the task spec, exactly as answer formats are learned
-today, and extraction stays a parse plus a field lookup.
+The id names the debt. The model writes it into the `tool_call` header,
+the harness echoes it on the matching `tool_result`, and the same string at
+both ends lets the model pair a result with its call by exact match instead
+of counting back through the sequence. The model writes ids as
+`TOOL_NAME:COUNTER`, with one counter for the whole conversation, so the
+next id is always the previous counter plus one.
 
-A `verifiable_answer` comes after the think messages and tool calls it
-rests on, and canonically before the `assistant` message: generated after
-the committed claim, the assistant text presents a result that is already
-in context instead of deriving it a second time, which keeps the two
-consistent. Consistency itself is a training-enforced property (for
-literal answers, containment of the payload in the assistant text is a
-one-line reward check); the format only makes it checkable. Deployments
-that do not consume `verifiable_answer` messages ignore them (see Unknown
-output types below).
+The harness echoes an id verbatim under one rule: it must consist of 1 to
+64 characters from `[A-Za-z0-9_:.-]`, so that an echoed id can never
+introduce header syntax. The rule deliberately accepts more than the
+model's own convention, so that an id which entered through an API layer,
+a client replaying its own `call_abc123` for instance, passes through byte
+for byte and a replayed conversation stays token-identical for the prefix
+cache.
 
-A `verifiable_answer` persists like `assistant` messages and tool calls
-(memory policy, section 9): it is a committed claim, not private
-reasoning, and is never stripped.
+A failing id is refused where it originates. An id supplied through an API
+layer that fails the rule, or that collides with the id of a call still
+open, is rejected with a request error before it reaches the token stream.
+A malformed or colliding id written by the model is a framing violation
+(section 3): the harness discards the call message and may resume the
+model with a notice so it can reissue the call.
 
-> **Editorial note (to be removed before release; an open training-design
-> discussion, not part of the format).** Framing the verifiable answer as an
-> output addressed to the harness suggests an RL setup worth recording.
-> During RLVR the reward is read at the `verifiable_answer`, and the episode
-> can end there: only the thinking and tool-call traces leading to the
-> answer are reinforced, never an `assistant` message. Turning a correct
-> answer into a user-facing reply is then a separate, parallel-learnable
-> stage: given the reasoning trace, the committed answer, and a prompt
-> (which may ask for an explanation in a particular language, style, or
-> level of expertise), the model produces the `assistant` message, possibly
-> after a second thinking pass on how to present the result. This keeps
-> answer-correctness and answer-presentation as distinct objectives. It
-> belongs in a training/behavior doc, not the format spec; recorded here for
-> discussion.
+Every call receives exactly one `tool_result`, which closes it; a timeout
+or a crashed tool still closes the call, with a result whose payload
+describes the error. Delivery is incremental: a result that is ready
+mid-burst is spliced in at the next message close, and when the model is
+waiting the harness resumes it as soon as at least one result is ready,
+delivering whatever has accumulated as consecutive `tool_result` messages
+while the remaining calls stay open.
 
-```
-<|out|> think <|hdr|> 6 times 7, so 42. <|/out|>
+### Routing
 
-<|out|> verifiable_answer <|hdr|> 42 <|/out|>
-
-<|out|> assistant <|hdr|> It works out to 42: six sevens are 42. <|/out|>
-<|wait|>
-```
-
-A multi-part task, with the payload shape the verifier declared (one field
-per unknown):
-
-```
-<|out|> think <|hdr|> Adding the equations gives x = 3, so y = -2. <|/out|>
-
-<|out|> verifiable_answer <|hdr|> {"x": 3, "y": -2} <|/out|>
-
-<|out|> assistant <|hdr|> Solving the system gives x = 3 and y = -2. <|/out|>
-<|wait|>
-```
-
-### Unknown output types
-
-Output types are a contract with the harness, and two cases are distinct.
-An **unknown** type is a harness error: nothing is dispatched, and the
-harness may report the failure in-band as a `harness` notice at the
-next boundary ("output type 'quack' is not supported here") so the model
-can recover, or it may simply ignore the message. A **known but
-unconsumed** type (a conventional type this deployment deliberately does
-not consume) is not an error: the message is inert, and no notice is
-raised. Decoding is never interrupted in either case; generation stops
-only at the wait token (section 3).
+The harness dispatches an output on its header alone, without parsing the
+payload. Two cases are distinct. An **unknown** type is a harness error:
+nothing is dispatched, and the harness may report it in-band as a
+`harness` notice at the next boundary ("output type 'quack' is not
+supported here") so the model can recover, or ignore the message. A
+**known but unconsumed** type, one this deployment deliberately does not
+consume, a `verifiable_answer` outside of grading for instance, is inert:
+no error, no notice. In neither case is decoding interrupted; generation
+stops only at `<|wait|>` (section 3).
 
 ## 6. Order and authority
 
