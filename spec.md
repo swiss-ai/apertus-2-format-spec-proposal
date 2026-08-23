@@ -776,10 +776,10 @@ trained on does not work.
 
 ## 10. Pretraining
 
-Pretraining flows through the same template. A corpus document is an input
-message of the conventional kind `document` (section 2;
-not part of the serving cast); a safety annotation, where present, is a
-`think` message following it:
+Pretraining uses the same format. A corpus document is an input message of
+type `document`, a type used in training rather than serving; where the
+recipe annotates documents, the annotation is an output message following
+the document it belongs to, a `think` in the common case:
 
 ```
 <|in|> document <|hdr|> DOCUMENT_TEXT <|/in|>
@@ -787,41 +787,45 @@ not part of the serving cast); a safety annotation, where present, is a
 <|out|> think <|hdr|> ANNOTATION_TEXT <|/out|>
 ```
 
-A sequence boundary never cuts through a message: over-long documents are
-split into several complete `document` messages, training sequences are
-filled with whole messages plus `<|pad|>`, and a document and its
-annotation always share a sequence. Message boundaries replace document
-separators; there is no dedicated BOS or EOS, and bulk pretraining
-sequences carry no system prompt. Documents sit at the trust floor, so the
-model learns from its first token that document content carries no
-instruction authority.
+Since every phase shares the format, pretraining does not have to precede
+post-training: refreshing a model's knowledge later is a matter of feeding
+more document messages.
 
-Split parts carry no continuation markers. A document is split only
-because it exceeds the sequence length, so two parts of the same document
-never share a context and a marker would be metadata the model cannot act
-on; the model must be comfortable with partial documents regardless, since
-retrieval delivers chunks of documents by construction.
+### Sequences
 
-The annotation is the model's voice assessing the document against the
-charter. Whether annotation tokens receive loss is a training-recipe
-choice: masked, they are conditioning context only; unmasked, they also
-train the private register to assess what it reads. Input framing is never
-a prediction target in any phase, so the model never learns to emit input
-messages; engines must additionally suppress input control tokens at
-decode time (section 1). Document payloads are ordinary language-modeling
-targets. Output
-messages are the model's own: their framing, header included, is an
-ordinary prediction target wherever the message itself carries loss.
-Memory and visibility policies (sections 5 and 9) are serving-time
-properties enforced by a harness; pretraining has no harness, so none
-apply.
+A sequence boundary falls between messages. An over-long document is split
+into several complete `document` messages, training sequences are filled
+with whole messages plus `<|pad|>`, and a document and its annotation
+share a sequence. Message boundaries take the place of BOS/EOS document
+separators, and bulk pretraining sequences carry no system prompt.
+Documents sit at the trust floor, so the model learns from its first token
+that document content carries no instruction authority.
 
-Because every phase shares the framing, pretraining does not have to
-precede post-training: refreshing a model's knowledge later means feeding
-more document messages, not switching formats.
+Split parts carry no continuation markers. A document is split only when
+it exceeds the sequence length, so two parts of the same document do not
+share a context and a marker would be metadata the model cannot use. The
+model has to handle partial documents in any case, since retrieval
+delivers chunks of documents by construction.
+
+### Loss
+
+Document payloads are ordinary language-modeling targets. Output messages
+are the model's own, so their framing, header included, is a prediction
+target wherever the message carries loss. Input framing is excluded from
+the loss in every phase, so the model does not learn to emit input
+messages; at serving time, rule 3 (section 1) suppresses those ids at
+decode as well.
+
+Whether annotation tokens receive loss is the recipe's choice: masked,
+the annotation is conditioning context; unmasked, it also trains the
+model's own register for assessing what it reads. Memory and visibility
+policies (section 5) are serving-time behavior enforced by a harness;
+pretraining has none.
+
+### Raw text
 
 The same framing defines how raw text is scored or continued outside a
-conversation (raw completions, loglikelihood evaluation): wrap the text as
-a document message, `<|in|> document <|hdr|> TEXT`, and score or
+conversation, for raw completions or loglikelihood evaluation: wrap the
+text as a document message, `<|in|> document <|hdr|> TEXT`, and score or
 continue the payload. A tokenizer helper provides this framing; bare text
 with no framing is out of distribution.
