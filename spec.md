@@ -17,39 +17,38 @@
 
 ## What this is
 
-The Apertus Interaction Format defines the exact token sequence a model
-reads and writes, across pretraining, post-training, and serving: how the
-system prompt, input messages, model outputs, tool calls, and tool results
-are laid out in the token stream. It generalizes what a chat template does
-for conversations to the model's whole lifecycle.
+The Apertus Interaction Format is the token-level format an Apertus model
+reads and writes, across pretraining, post-training, and serving. It defines
+how everything the model sees or produces, the standing context, user turns,
+retrieved data, its own reasoning, tool calls, and replies, is laid out as a
+single sequence of tokens. It is what a chat template is for a conversation,
+generalized to the model's whole lifecycle and to both directions of the
+exchange.
 
-It is built on one idea: **fixed message framing** with an **open header**. The
-framing (the direction a message flows, where it starts and ends, when the
-model stops and waits) is fixed. What kinds of messages exist, and what metadata they
-carry, is extensible. New message types can be added without touching the
-tokenizer or this framing; a fine-tune, or a capable model reading
+Structurally it rests on one choice: **fixed framing, open vocabulary**.
+Every message is an envelope, a reserved control token opening it and another
+closing it, with a header and a payload inside. That envelope structure and
+the handful of control tokens never change. What kinds of message exist, and
+what their headers carry, is open: new types are added without touching the
+tokenizer or the framing, and a fine-tune, or a capable model reading
 zero-shot, absorbs them.
 
-**A framework, not one model's format.** This document defines a general
-framework: the framing, the trust model, and the conventions every Apertus
-model shares. A specific model ships its own **profile** on top, naming the
-input and output types it was trained to understand and the capabilities it
-supports. Two models can share this framework and still differ in what they
-can do; a capability described here as possible is not a promise that any
-one model implements it.
-
-**The guiding principle.** Every message carries the content of exactly one
-source, quarantined by control tokens. The format aims at a strong
-property: against a perfectly capable model, content from one source can
-never be made to pass as content from another. Nothing a single source
-contributes can be *ambiguous*, readable either as that source's own content
+The framing exists to serve one principle: **one source per message**. Every
+message carries the content of a single source, a user, a tool, the model,
+sealed inside its envelope. The goal is that against a perfectly capable
+model, content from one source can never be made to pass as content from
+another: nothing a single source contributes can be read either as its own
 or as a second source's. Forging another source must be impossible by
-construction, not merely unlikely. Real models are not perfect and must be
-trained toward this, but the format must never make the distinction
-impossible in the first place. This is why the content of different sources
-is kept in separate messages, each sealed in its own control-token envelope
-(the opening and closing tokens that wrap it, section 3), never divided by
-in-payload markup (section 9).
+construction, not merely unlikely, which is why sources are separated only by
+control-token envelopes, never by markup a payload could contain (section 9).
+Real models are imperfect and must be trained toward this, but the format
+must never make the distinction impossible to begin with.
+
+This document specifies the **framework**: the framing, the trust model, and
+the conventions every Apertus model shares. A specific model ships a
+**profile** on top, naming the input and output types it was trained to
+understand and the capabilities it supports. A capability described here as
+possible is not a promise that any one model implements it.
 
 ## Worked example
 
