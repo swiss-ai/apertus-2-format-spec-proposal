@@ -97,8 +97,17 @@ rather than the suede ones. <|/out|>
 <|img_end|>` sequence from section 8; the placeholder is shown for
 readability.)
 
-What it demonstrates: two visually distinct token classes (reserved
-`<|...|>` control tokens vs. ordinary `<...>` text); an inline image inside
+The two bracket styles are different in kind. The `<|...|>` tokens
+(`<|sys|>`, `<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are **control
+tokens**: each is a single reserved token id, and only the harness can place
+one, so untrusted text can never forge them (section 2). The `<...>` tags in
+the system prompt (`<identity>`, `<effort>`, `<tools>`) are **ordinary
+text**: `<identity>` is just the characters `<`, `identity`, `>`, carrying
+no special status, used only to organize a payload (section 9). All of the
+conversation's framing and trust rests on the `<|...|>` tokens; the `<...>`
+tags are soft structure that anyone could type.
+
+What it demonstrates: an inline image inside
 a `user` message; the model-written `id=get_weather:0` on the call, echoed
 by the harness on the result; the interleaving of a `tool_result` and a
 `user` message, each self-wrapped, in canonical order; and `<|wait|>`
