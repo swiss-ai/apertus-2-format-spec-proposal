@@ -47,9 +47,9 @@ or as a second source's. Forging another source must be impossible by
 construction, not merely unlikely. Real models are not perfect and must be
 trained toward this, but the format must never make the distinction
 impossible in the first place. This is why the content of different sources
-is separated only by envelopes, never by in-payload markup (section 9), and
-why a message's header, its routing and trust metadata, is written by the
-harness or the model, never by the content it describes.
+is kept in separate messages, each sealed in its own control-token envelope
+(the opening and closing tokens that wrap it, section 3), never divided by
+in-payload markup (section 9).
 
 ## Worked example
 
@@ -124,7 +124,8 @@ Terms used throughout this document:
   explicitly enabled during encoding.
 - **Message**: the basic unit of the conversation, wrapped in an opening
   and a closing control token. Inside, it always consists of a header
-  followed by a payload (section 3).
+  followed by a payload (section 3). The opening/closing control-token pair
+  is the message's **envelope**.
 - **Header**: the metadata region of a message (for example its type).
 - **Payload**: the content region of a message.
 - **Harness notice**: an input message of type `harness` (section 5): the
