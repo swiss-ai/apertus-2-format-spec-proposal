@@ -1,7 +1,7 @@
 # Apertus Interaction Format
 
 - [What this is](#what-this-is)
-- [Worked example](#worked-example)
+- [Example conversation](#example-conversation)
 - [Vocabulary](#vocabulary)
 - [1. The frozen core](#1-the-frozen-core)
 - [2. Control tokens (reserved vocabulary)](#2-control-tokens-reserved-vocabulary)
@@ -50,16 +50,16 @@ the conventions every Apertus model shares. A specific model ships a
 understand and the capabilities it supports. A capability described here as
 possible is not a promise that any one model implements it.
 
-## Worked example
+## Example conversation
 
-A short conversation: the system prompt, a user question with an inline
-image, then the model thinks, calls a tool, and waits. A second user message
-arrives while the call is still open; the model takes it in, keeps waiting,
-and once the result comes back it thinks again and answers. Every convention
-it uses is defined in the sections below; this example just shows the overall
-shape.
+A short conversation that exercises most of the format: a system prompt, a
+user question with an inline image, the model reasoning and calling a tool, a
+second user message that lands while the tool is still running, and the reply
+once the result is back. Every convention it uses is defined below; this is
+just to show the overall shape.
 
-The example uses two bracket styles, and they are different in kind. The
+Before reading it, note that two bracket styles appear and they mean
+different things. The
 `<|...|>` tokens (`<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are **control
 tokens**: each is a single reserved token id, and only the harness can place
 one, so untrusted text can never forge them (section 2). The `<...>` tags in
