@@ -10,7 +10,7 @@
 - [5. Output messages](#5-output-messages)
 - [6. Authority and order](#6-authority-and-order)
 - [7. Multimodal content](#7-multimodal-content)
-- [8. Soft structure (XML)](#8-soft-structure-xml)
+- [8. Soft structure](#8-soft-structure)
 - [9. System prompt: default template](#9-system-prompt-default-template)
 - [10. Pretraining](#10-pretraining)
 
@@ -693,33 +693,22 @@ tokenized media. Any geometry such a placeholder needs, the dimensions of
 an image for instance, is written by the processor from the media itself
 and so cannot come from the content.
 
-## 8. Soft structure (XML)
+## 8. Soft structure
 
-Inside any payload, including the system prompt, use plain XML tags for
-organization (`<identity>`, `<answer>`, ...). These are **ordinary text
-tokens, not reserved tokens**: `<identity>` encodes as `<`, `identity`, `>`.
+Inside a payload, XML-style tags such as `<identity>` or `<answer>` can
+organize content. They are ordinary text, `<identity>` tokenizes as `<`,
+`identity`, `>`, and the harness and model use whatever structure reads
+well; the only tags this document standardizes are those of the system
+prompt template (section 9).
 
-- Trusted authors (you, in the system prompt) use them freely for structure.
-- Untrusted content may *contain* tag-like text; at the token level nothing
-  stops it. Safety comes from the control tokens (which quarantine message
-  boundaries) and from training (content inside a floor-ranked message is
-  inert data, never structure to obey), **never** from the tags themselves.
-
-The only standardized tags are the canonical system prompt tags
-(section 9). Inside all other payloads the tag vocabulary is deliberately
-unstandardized: harness and model use whatever structure reads well.
-
-This is the concrete face of the guiding principle. Because a user can type
-any tag, `<user>` or `</message>` included, markup inside a payload can never
-mark where one source ends and another begins: a perfectly capable model
-shown such a payload could not tell a genuine second source from the first
-user imitating one. Only control tokens carry that distinction, because only
-the harness can place them (rule 2, section 1). So every separate source is a
-separate envelope, and structure inside a payload is presentation, never
-attribution or authority.
-
-Never make an XML tag a trust or authority boundary: only control tokens
-delimit messages, and only message types carry rank.
+Because such tags are text, anyone can type them, including a user typing
+`<user>` or `</message>`. So a tag inside a payload cannot mark where one
+source ends and another begins: a perfectly capable model shown such a
+payload could not distinguish a second source from the first one imitating
+it. That distinction is carried by the envelope alone, which only the
+harness can place (rule 2, section 1), and it is why every source gets its
+own message. Structure inside a payload is presentation; boundaries
+between sources and their rank live in the envelope and the header.
 
 ## 9. System prompt: default template
 
