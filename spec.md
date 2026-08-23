@@ -5,7 +5,7 @@
 - [Example conversation](#example-conversation)
 - [1. The frozen core: control tokens](#1-the-frozen-core-control-tokens)
 - [2. Message structure](#2-message-structure)
-- [3. Generation bursts and halt states](#3-generation-bursts-and-halt-states)
+- [3. Generation](#3-generation)
 - [4. INPUT types (world to model)](#4-input-types-world-to-model)
 - [5. OUTPUT types (model to world)](#5-output-types-model-to-world)
 - [6. Order and authority](#6-order-and-authority)
@@ -205,7 +205,7 @@ therefore does not help an attacker: only the harness can place a control
 token, because only the harness encodes with special-token parsing on.
 
 The surface forms above are a recommendation. What the format depends on
-are three rules:
+are four rules:
 
 1. each control token is one registered special-token ID;
 2. untrusted text is always encoded with special tokens disabled;
@@ -213,6 +213,12 @@ are three rules:
    `<|/out|>`, `<|hdr|>`, and `<|wait|>`; the engine suppresses every other
    registered special id. This applies to sampling only: tokens the harness
    places in the context are unaffected.
+4. the engine stops decoding only at `<|wait|>`; no other token, `<|/out|>`
+   or a legacy EOS included, is configured as a stop. The published
+   generation config declares `<|wait|>` as the end-of-sequence id, so a
+   default-configured engine stops correctly. An engine stopped at a message
+   close returns a half-finished burst, typically the think without the
+   answer.
 
 ## 2. Message structure
 
@@ -274,81 +280,64 @@ single source: this user, that tool, the model. Anything that would combine
 two sources in one payload, a quoted message or an embedded one, is
 expressed as separate messages, each in its own envelope.
 
-## 3. Generation bursts and halt states
+## 3. Generation
 
-The conversation has two writers alternating at message boundaries: the
-harness writes input messages, the model generates output messages.
+The sequence grows in **bursts**. A burst begins when the harness hands
+control to the model and ends only when the model emits `<|wait|>`. Within
+a burst the model generates output messages in any order and number: think,
+tool call, think, tool call, reply. Between bursts the harness appends
+input messages.
 
-- The model emits output messages in **any order and number**: think,
-  assistant, tool_call, think, tool_call, assistant, and so on.
-- After every message close (`<|/out|>` or `<|/in|>`), control passes
-  briefly to the harness. If input is ready (a queued user message, a tool
-  result, a `harness` notice), the harness appends it, in canonical order
-  (section 6), before the model continues; if nothing is pending, the
-  model continues uninterrupted. These brief pauses are harness
-  scheduling; they do not end the burst.
-- Because input can be appended at any message boundary, the model must
-  treat every boundary as a point where new input may appear, and re-plan
-  rather than continue a stale plan.
+### Message boundaries
 
-### Halt states
+After every message close, `<|/out|>` or `<|/in|>`, control returns briefly
+to the harness. If input is pending (a queued user message, a tool result,
+a `harness` notice), the harness appends it in canonical order (section 6)
+before the model continues; otherwise the model continues uninterrupted.
+These returns do not end the burst. Since input can appear at any boundary,
+the model treats every boundary as a point where its plan may need to
+change.
 
-A generation burst ends in exactly one of two ways:
+### Input during a burst
 
-1. **`<|wait|>`: waiting.** The model has nothing more to emit right now.
-   This is the model's only deliberate stop; the engine halts decoding at
-   this token. `<|wait|>` is the **only stop token**: configuring the
-   engine to halt at `<|/out|>` or any other control token is a broken
-   deployment. A message close is a scheduling point for the harness, not
-   the end of the request; an engine stopped there returns a half-finished
-   burst, typically the think without the answer. Nor must an engine halt
-   on an EOS token: no EOS appears in a conversation, and rule 3
-   (section 1) suppresses any legacy EOS id at decode time regardless.
-   The published generation config declares `<|wait|>` as the
-   end-of-sequence id, so a default-configured engine stops correctly
-   without deployment-side changes. Anything the harness
-   delivers next resumes the model: a
-   tool result, a `user` message, a `harness` notice, an `event`. Open
-   tool calls do not change the state: the model waits the same way
-   whether or not results are still owed (a call stays open until its
-   result arrives, section 4), and results may arrive together or across
-   several resumptions. `<|wait|>` encodes readiness, not
-   expectation: a reply ending in a question and one ending in a statement
-   close identically.
-2. **Any other stop: abnormal.** Token limit mid-payload, engine failure.
-   Harness policy decides: retry, or resume the model with a `harness`
-   notice describing what was cut off. Because input can only be appended
-   at a message boundary, the harness first discards the incomplete
-   message back to the last close; the notice may quote the discarded
-   fragment as inert data. Output that violates message framing (a
-   missing `<|hdr|>`, a control token in an illegal position) is treated
-   the same way whether or not decoding stopped: the harness discards
-   everything from the first violating token onward, back to the last
-   cleanly closed message, since output after a violation is untrusted
-   even where it happens to parse. The harness may resume the model with
-   a notice. Engines that support constrained decoding may instead make
-   ill-formed framing impossible to generate.
+Input that arrives while the model is generating is appended at the next
+message boundary, ahead of any further output the model had planned, and
+the model's subsequent generation is conditioned on it. The burst continues
+across the splice: everything already generated is kept, including the
+message in progress, which the model finishes first. A user message that
+arrives while a tool call is pending does not cancel the call; the result
+is still delivered (section 6), and the model decides what to do with it.
 
-A deployment may let the model schedule input for itself: a tool call (a
-timer, a reminder) that causes the harness to deliver a message later,
-which resumes the model like any other input. How such a mechanism works
-is out of scope; the spec defines only how the occurrence enters the
-conversation: as an `event`, as a `harness` notice when the harness itself
-speaks about it, or as a new input type the deployment defines (section 2).
+A deployment may also let the model schedule input for itself, for instance
+a tool call that sets a timer so the harness delivers a message later. How
+that works is out of scope; the format fixes only that the occurrence
+enters the sequence as an input message at a boundary: an `event`, a
+`harness` notice when the harness itself speaks about it, or a kind the
+deployment defines (section 2).
 
-### Another user message
+### Waiting
 
-A user may submit text while the model is working. The harness appends it
-at the next message boundary, **in front of any further output the model
-had planned**, and the model's subsequent generation is conditioned on it.
-The burst continues across the splice: nothing is regenerated, and the
-already-generated prefix stays valid. The splice never interrupts a message
-in progress: input lands only at message boundaries, so the model always
-finishes the message it is writing, and a completed message is never
-discarded (the only discard path is the abnormal stop above). If such a
-user message invalidates a
-pending tool call, the result is still delivered (canonical order,
-section 6) and the model is free to disregard it.
+`<|wait|>` means the model has nothing more to emit right now; the engine
+halts decoding there (rule 4, section 1). Anything the harness delivers
+next resumes the model: a tool result, a `user` message, a `harness`
+notice, an `event`. Open tool calls do not change this. A call stays open
+until its result arrives (section 4), results may arrive together or across
+several resumptions, and the model waits the same way whether or not
+results are still owed. A reply ending in a question and one ending in a
+statement close identically.
+
+### Abnormal stops
+
+Decoding can also stop for other reasons, a token limit reached
+mid-payload or an engine failure, and output can violate message framing
+(a missing `<|hdr|>`, a control token in an illegal position) whether or
+not decoding stopped. Both cases are handled alike: the harness discards
+everything from the first bad token back to the last cleanly closed
+message, since output after a violation is untrusted even where it happens
+to parse, and then either retries or resumes the model with a `harness`
+notice describing what was cut off, which may quote the discarded fragment
+as inert data. Engines that support constrained decoding may instead make
+ill-formed framing impossible to generate.
 
 ## 4. INPUT types (world to model)
 
