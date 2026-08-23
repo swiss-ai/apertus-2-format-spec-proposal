@@ -1,4 +1,4 @@
-# Apertus 2 Chat Template Spec Proposal
+# Apertus Interaction Format
 
 - [What this is](#what-this-is)
 - [Worked example](#worked-example)
@@ -17,10 +17,11 @@
 
 ## What this is
 
-A chat template defines the exact token sequence a language model reads and
-writes: how the system prompt, user messages, model replies, tool calls, and
-tool results are laid out in the token stream. This document specifies such a format
-for training and serving.
+The Apertus Interaction Format defines the exact token sequence a model
+reads and writes, across pretraining, post-training, and serving: how the
+system prompt, input messages, model outputs, tool calls, and tool results
+are laid out in the token stream. It generalizes what a chat template does
+for conversations to the model's whole lifecycle.
 
 It is built on one idea: **fixed message framing** with an **open header**. The
 framing (the direction a message flows, where it starts and ends, when the
@@ -38,7 +39,7 @@ can do; a capability described here as possible is not a promise that any
 one model implements it.
 
 **The guiding principle.** Every message carries the content of exactly one
-entity, quarantined by control tokens. The format aims at a strong
+source, quarantined by control tokens. The format aims at a strong
 property: against a perfectly capable model, no single participant can craft
 input that is *ambiguous*, that could be read either as their own message or
 as a second participant speaking. Faking another voice must be impossible by
@@ -240,9 +241,9 @@ An output message:
   in a header; in particular, `type` is derived from the delivery channel,
   never claimed by the sender. This is what makes the trust model in
   section 7 enforceable.
-- **One author per message.** A message's payload is the content of a
-  single entity: this user, that tool, the model. Structure that would join
-  two entities in one payload, a second speaker, an embedded sub-message, is
+- **One source per message.** A message's payload is the content of a
+  single source: this user, that tool, the model. Structure that would join
+  two sources in one payload, a second speaker, an embedded sub-message, is
   never written inside a payload; it is expressed as separate enveloped
   messages. On inputs the header is the harness's privileged annotation over
   that content; on outputs the model writes its own header, since it is the
@@ -252,7 +253,7 @@ An output message:
 ### Addressing
 
 A header names *who*, not only *what*. On an input, a `from=` key can carry
-the harness-stamped identity of the authoring entity; on an output, a `to=`
+the harness-stamped identity of the authoring source; on an output, a `to=`
 key can carry the recipient the model is addressing. Like `type`, these are
 harness-stamped on inputs and model-written on outputs, and content never
 sets them. Two capabilities follow, both optional and profile-gated:
