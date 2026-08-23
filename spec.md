@@ -21,11 +21,11 @@ The Apertus Interaction Format is the token-level format an Apertus model
 reads and writes, across pretraining, post-training, and serving. It defines
 how everything the model sees or produces, the standing context, user turns,
 retrieved data, its own reasoning, tool calls, and replies, is laid out as a
-single sequence of tokens. It is what a chat template is for a conversation,
-generalized to the model's whole lifecycle and to both directions of the
-exchange.
+single sequence of tokens. It plays the role a chat template plays for a
+conversation, generalized to the model's whole lifecycle and to both
+directions of the exchange.
 
-Structurally it rests on one choice: **fixed framing, open vocabulary**.
+Structurally it rests on one choice: **fixed framing, open types**.
 Every message is an envelope, a reserved control token opening it and another
 closing it, with a header and a payload inside. That envelope structure and
 the handful of control tokens never change. What kinds of message exist, and
@@ -34,15 +34,16 @@ tokenizer or the framing, and a fine-tune, or a capable model reading
 zero-shot, absorbs them.
 
 The framing exists to serve one principle: **one source per message**. Every
-message carries the content of a single source, a user, a tool, the model,
-sealed inside its envelope. The goal is that against a perfectly capable
-model, content from one source can never be made to pass as content from
-another: nothing a single source contributes can be read either as its own
-or as a second source's. Forging another source must be impossible by
-construction, not merely unlikely, which is why sources are separated only by
-control-token envelopes, never by markup a payload could contain (section 9).
-Real models are imperfect and must be trained toward this, but the format
-must never make the distinction impossible to begin with.
+message carries the content of a single source (the originator of that
+content: a particular user, a tool, the model itself), sealed inside its
+envelope. The goal is unforgeability. Against a perfectly capable model,
+content from one source can never be made to pass as content from another:
+nothing a single source contributes can be read as coming from a second
+source. Forging another source must be impossible by construction, not
+merely unlikely, which is why sources are separated only by control-token
+envelopes, never by markup a payload could contain (section 9). Real models
+are imperfect and must be trained toward this, but the format must never
+make the distinction impossible to begin with.
 
 This document specifies the **framework**: the framing, the trust model, and
 the conventions every Apertus model shares. A specific model ships a
@@ -62,6 +63,8 @@ Terms used throughout this document:
 - **Engine**: the inference server that decodes tokens (vLLM, SGLang, and
   similar). Part of the harness in the broad sense, named separately where
   the distinction matters.
+- **Source**: the originator of a message's content: a particular user, a
+  tool, the harness, the model. Every message has exactly one.
 - **Control token**: a token registered in the tokenizer as one single ID,
   for example `<|in|>`. Also called a special token. Ordinary text
   never tokenizes into a control token unless special-token parsing is
@@ -69,24 +72,22 @@ Terms used throughout this document:
   document, and not to be confused with the `<...>` XML-style tags that
   appear inside payloads (`<identity>`, `<tools>`): those are ordinary
   text, `<`, `identity`, `>`, with no special status, used only to
-  organize content (section 9). All framing and trust rests on the
-  `<|...|>` tokens; `<...>` tags are soft structure anyone could type.
+  organize content (section 9).
 - **Message**: the basic unit of the conversation, wrapped in an opening
   and a closing control token. Inside, it always consists of a header
   followed by a payload (section 3). The opening/closing control-token pair
   is the message's **envelope**.
-- **Header**: the metadata region of a message (for example its type).
+- **Header**: the metadata region of a message. It names what the message is
+  and carries whatever else the deployment needs to place it, such as who
+  it is from or to, or where it sits in the conversation (section 3). On
+  inputs the harness writes it; on outputs the model does.
 - **Payload**: the content region of a message.
+- **Generation burst**: one stretch of decoding, from the harness handing
+  control to the model until the model emits the wait token `<|wait|>` (or
+  stops abnormally, section 4). Brief returns of control at message closes,
+  including spliced-in input, do not end a burst; only the stop does.
 - **Harness notice**: an input message of type `harness` (section 5): the
   harness speaking as itself.
-- **Generation burst**: one stretch of decoding, from the moment the harness
-  hands control to the model to the moment the model emits the wait token
-  `<|wait|>` (or stops abnormally, section 4). Control passing briefly back to the
-  harness at a message close, including a spliced-in input message, does
-  not end the burst; only the stop does. A conversation contains many
-  bursts; one may end with a tool call still open, and the next continues
-  after the result arrives. The exchange is not one message in, one message out:
-  between two waiting states there can be many messages in both directions.
 - **Padding**: filler tokens used when sequences of different lengths are
   batched into one fixed-size tensor (mainly in training). `<|pad|>` fills
   the unused positions, is masked out of attention and loss, and never
@@ -94,6 +95,9 @@ Terms used throughout this document:
 - **Prefix cache**: engines cache the computation for a token prefix (the KV
   cache) and reuse it when a later request starts with the same tokens.
   Rewriting early tokens invalidates the cache from that point onward.
+- **Profile**: a model's declaration of which input and output types it
+  understands and which optional capabilities it supports. The framework is
+  what all profiles share.
 - **RAG**: retrieval-augmented generation. An external system searches a
   corpus and pushes the results into the model's context.
 
