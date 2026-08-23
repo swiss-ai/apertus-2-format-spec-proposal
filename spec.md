@@ -71,7 +71,7 @@ specified in the sections below; read it first for shape.
 </tools>
 <|/sys|>
 
-<|in|> type=user <|hdr|> What should I wear in Lisbon today? Here's my outfit: <|image|> <|/in|>
+<|in|> type=user <|hdr|> Is this outfit okay for Lisbon today? <|image|> <|/in|>
 
 <|out|> type=think <|hdr|> Need today's weather before advising. Call the tool. <|/out|>
 
