@@ -11,7 +11,7 @@
 - [6. Authority and order](#6-authority-and-order)
 - [7. Multimodal content](#7-multimodal-content)
 - [8. Soft structure](#8-soft-structure)
-- [9. System prompt: default template](#9-system-prompt-default-template)
+- [9. System prompt: an example layout](#9-system-prompt-an-example-layout)
 - [10. Pretraining](#10-pretraining)
 
 ## What this is
@@ -361,8 +361,8 @@ what the payload contains.
 ### `system`
 
 The standing context every other message is read against: identity,
-behavior, the tool inventory, and effort. Section 9 gives the default
-template. Structurally an ordinary input, it differs in delivery: it opens
+behavior, the tool inventory, and effort; section 9 gives an example
+layout. Structurally an ordinary input, it differs in delivery: it opens
 the sequence and persists, and the harness edits it in place instead of
 re-sending it, which keeps the prefix cache warm. It holds the highest
 authority (rank 1, section 6).
@@ -496,7 +496,7 @@ types of their own.
 
 The model's reasoning. Whether the harness shows it to the user or keeps it
 hidden is the harness's choice. Think messages from completed turns are
-stripped under the memory policy (section 9), so a conclusion the model
+stripped under the memory policy (section 5), so a conclusion the model
 must keep across turns belongs in an `assistant` message or a tool call.
 
 ```
@@ -523,7 +523,7 @@ claim as a payload to parse rather than a span to find in prose. A task
 with several verifiable parts declares a structured payload with one field
 per part. The answer comes after the reasoning and tool calls it rests on
 and before the `assistant` reply, so the reply presents a claim already in
-context instead of deriving it again. It persists like a reply (section 9).
+context instead of deriving it again. It persists like a reply (memory policy, below).
 
 ```
 <|out|> think <|hdr|> Adding the equations gives x = 3, so y = -2. <|/out|>
@@ -608,6 +608,19 @@ supported here") so the model can recover, or ignore the message. A
 consume, a `verifiable_answer` outside of grading for instance, is inert:
 no error, no notice. In neither case is decoding interrupted; generation
 stops only at `<|wait|>` (section 3).
+
+### Memory policy
+
+As a conversation grows, the harness may strip think messages from
+completed turns to reclaim context; every think message since the most
+recent `user` message stays visible, so the current turn keeps its working
+context however many messages it interleaves. Assistant messages, tool
+calls, tool results, and verifiable answers persist. Stripping removes
+only the think messages; a burst's `<|wait|>` remains, so a think-only
+burst collapses to a bare `<|wait|>`. Stripping invalidates the prefix
+cache from the first stripped token, which is the cost of reclaiming
+context. Like the rest of a harness's behavior, the policy is tuned to the
+model's profile.
 
 ## 6. Authority and order
 
@@ -698,8 +711,8 @@ and so cannot come from the content.
 Inside a payload, XML-style tags such as `<identity>` or `<answer>` can
 organize content. They are ordinary text, `<identity>` tokenizes as `<`,
 `identity`, `>`, and the harness and model use whatever structure reads
-well; the only tags this document standardizes are those of the system
-prompt template (section 9).
+well; this document fixes no tag vocabulary, and section 9 shows an
+example layout for the system prompt.
 
 Because such tags are text, anyone can type them, including a user typing
 `<user>` or `</message>`. So a tag inside a payload cannot mark where one
@@ -710,11 +723,12 @@ harness can place (rule 2, section 1), and it is why every source gets its
 own message. Structure inside a payload is presentation; boundaries
 between sources and their rank live in the envelope and the header.
 
-## 9. System prompt: default template
+## 9. System prompt: an example layout
 
-The system prompt is an input message of type `system` (section 4), the
-standing context at authority rank 1:
-`<|in|> system <|hdr|> PAYLOAD <|/in|>`.
+The system prompt is a `system` input message (section 4). How its payload
+is laid out is a profile decision like any other; what follows is an
+example layout that uses soft structure (section 8) to give fine-tuning
+and harnesses agreed places to look for the standing context.
 
 ```
 <|in|> system <|hdr|>
@@ -741,49 +755,24 @@ standing context at authority rank 1:
 </tools>
 
 <environment>
-  {platform, user settings, enabled features: the volatile stratum; keep it
-   last for prefix-cache friendliness}
+  {platform, user settings, enabled features; changes most often, so it
+   comes last for the prefix cache}
 </environment>
 <|/in|>
 ```
 
-### Canonical system prompt tags
+| tag | holds |
+|-----|-------|
+| `<identity>` | who the model is: name, builder, current date |
+| `<behavior>` | tone, formatting rules, refusal policy, verbosity defaults |
+| `<effort>` | operating mode (low / medium / high): how much to think, how autonomously to act |
+| `<tools>`, `<tool>`, `<schema>`, `<policy>` | the tool inventory: one `<tool>` per tool, with its JSON Schema and usage policy |
+| `<environment>` | platform, user settings, enabled features; changes most often, so it comes last |
 
-These are the canonical tags of the system prompt. They are ordinary text
-like all soft structure (section 8): a deployment may add its own tags, but
-where a canonical tag applies it should be used, so fine-tuning and
-harnesses agree on where to look for what.
-
-| tag | status | holds |
-|-----|--------|-------|
-| `<identity>` | recommended | who the model is: name, builder, current date |
-| `<behavior>` | recommended | tone, formatting rules, refusal policy, verbosity defaults |
-| `<effort>` | required | operating mode (low / medium / high): how much to think, how autonomously to act |
-| `<tools>`, `<tool>`, `<schema>`, `<policy>` | when tools exist | the tool inventory: one `<tool>` per tool, with its JSON Schema and usage policy |
-| `<environment>` | recommended | platform, user settings, enabled features; volatile, keep last |
-
-`<effort>` is required because the model should know its operating mode
-rather than discover it by experiment.
-
-The levels are a **trained contract**, not an instruction-following hope:
-each level is an explicit training target with effort-matched traces. How
-much the model thinks under a given level follows from that training, the
-same way its decision to call a tool does; a level that was never trained
-is decorative and not conformant.
-
-### Memory policy
-
-Think messages are stripped as the conversation grows, with one hard
-boundary: **every think message since the most recent `user` message stays
-visible**. The current turn never loses working context, however many
-think, tool_call, and assistant messages it interleaves; stripping applies
-only to think messages from completed turns. Assistant messages, tool
-calls, and tool results always persist and are never rewritten. Stripping
-removes only the think messages; a burst's `<|wait|>` token remains, so a
-think-only burst collapses to a bare `<|wait|>` (rare: bursts almost
-always contain a tool call or an assistant message). Stripping invalidates
-the prefix cache from the first stripped token; that is the price of
-reclaiming context.
+The effort tag is here because the operating mode is something the model
+should be told. For the levels to mean anything, each one has to be a
+training target with effort-matched traces; a level the model was not
+trained on does not work.
 
 ## 10. Pretraining
 
