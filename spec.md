@@ -216,8 +216,7 @@ are three rules:
 
 ## 2. Message structure
 
-A message is either an input or an output, never both; the two share the
-same internal layout. An input message:
+Input and output messages share one layout. An input message:
 
 ```
 <|in|> HEADER <|hdr|> PAYLOAD <|/in|>
@@ -229,72 +228,51 @@ An output message:
 <|out|> HEADER <|hdr|> PAYLOAD <|/out|>
 ```
 
-- The header runs from the opening token to the `<|hdr|>` token. Because
-  the terminator is a control token, no payload, however hostile, can
-  imitate a header boundary. The payload is opaque: it may freely contain
-  header-like text, JSON braces, or `<|...|>` look-alikes; nothing in it is ever
-  re-parsed as header.
-- **The header is opaque to the framework.** What it says about a message,
-  and how, is the model's **profile**: the harness serving that model is
-  tuned to its header format and routes, ranks, and dispatches on it. A
-  profile typically has the header state what kind of message this is (a
-  user message, a user's document, the system prompt, a tool call), and may
-  add who it is from or to, where it sits in the conversation (addressing,
-  below), or per-kind fields such as a call id. This document writes
-  headers in one such format, a leading word for the kind of message
-  followed by optional `key=value` pairs, and uses it to cover the kinds
-  every deployment has today: `system`, `user`, `attachment`, `tool_result`,
-  `think`, `tool_call`, `assistant`, and so on (sections 4 and 5). Well-named
-  kinds stay readable zero-shot (`calendar_invite`), and a profile may shape
-  headers differently.
-- **Input headers are under harness control.** The harness writes every
-  input header and decides what goes in it. Some values originate elsewhere
-  (an attachment's filename, the model's call id on a `tool_result`), but
-  they enter a header only through the harness, which enforces a shape on
-  them first (a call id must consist entirely of safe characters,
-  section 4). Content can never place itself
-  in a header; in particular, what kind of message it is derives from the
-  delivery channel, never from a claim by the sender. This is what makes the
-  trust model in section 6 enforceable.
-- **One source per message.** A message's payload is the content of a
-  single source: this user, that tool, the model. Structure that would join
-  two sources in one payload, a quoted message, an embedded sub-message, is
-  never written inside a payload; it is expressed as separate enveloped
-  messages. On inputs the header is the harness's privileged annotation over
-  that content; on outputs the model writes its own header, since it is the
-  sole author of its output. This one-author rule is what section 8 relies
-  on and what makes the guiding principle enforceable.
+The header runs from the opening token to the `<|hdr|>` token; the payload
+runs from there to the closing token. Because the terminator is a control
+token, the boundary between the two is always exact: a payload may contain
+header-like text, JSON, or `<|...|>` look-alikes, and none of it is parsed as
+header.
 
-### Addressing
+### Header
 
-A header names *who*, not only *what*. On an input, a `from=` key can carry
-the harness-stamped identity of the authoring source; on an output, a `to=`
-key can carry the recipient the model is addressing. Like `type`, these are
-harness-stamped on inputs and model-written on outputs, and content never
-sets them. Two capabilities follow, both optional and profile-gated:
+The header is opaque to the framework. What it says about a message, and
+how, is the model's **profile**, and the harness serving that model is
+tuned to that profile's header format: it routes, ranks, and dispatches on
+it. A profile typically has the header state what kind of message this is
+(a user message, a user's document, the system prompt, a tool call) and may
+add who it is from or to, where it sits in the conversation, or fields
+specific to one kind, such as a call id.
 
-- **More than one source.** With `from=` and `to=` identifying each
-  source, a single session can carry several users at once, their
-  messages interleaved but never confusable, and one shared context serves
-  all of them instead of duplicating a large common prefix across separate
-  sessions.
-- **Non-linear structure.** A message may also carry its position in a
-  conversation shaped as a tree rather than a line (a threaded chat, a
-  branch point), for instance a key referencing the message it replies to.
+Who writes the header follows from the message kind. On an input the
+harness writes it: every value in it is either harness-authored or, where
+it originates elsewhere (an attachment's filename, the id echoed on a
+`tool_result`), admitted by the harness after a shape check (section 4).
+The kind of an input message therefore comes from the channel it arrived
+through; nothing in the content can claim a kind for itself, which is what
+makes the trust model of section 6 enforceable. On an output the model
+writes the header, since it is the sole author of its output. The harness
+then parses it to route the message, so a harness supports a model's
+profile in both directions: it writes headers in that format on the way in
+and reads them in that format on the way out.
 
-The framework permits these; a given model supports them only if its profile
-says so and its training covered them, and the exact key names and formats
-are a profile decision. What the framework fixes is the invariant: every
-distinct source is a distinct envelope, so identity is carried by
-harness-controlled header fields, never inferred from payload text.
+This document writes headers in one such format, a single word naming the
+kind of message, and uses it to cover the kinds every deployment has today:
+`system`, `user`, `attachment`, `tool_result`, `think`, `tool_call`,
+`assistant`, and so on (sections 4 and 5). New kinds need no change to the
+framing and nothing from the tokenizer. Whether a model handles a kind it
+was not trained on depends on how well it generalizes from the kind's name
+and payload; where it does not, a fine-tune covers that kind. Either way
+the harness must support the kind, since it routes on it. A model trained
+with a specific Apertus profile, Apertus 2 for instance, writes and reads
+headers in that profile's format, which may differ from the one used here.
 
-### Open header
+### Payload
 
-New kinds of message, and new header keys, require **no change to the
-framing** and nothing from the tokenizer. A capable model may understand an
-unfamiliar kind zero-shot by reading its name and payload; where that is not
-reliable, a fine-tune covers that one kind. The framing is a stable
-substrate; header formats are profiles on top of it.
+The payload is the content of the message, and it is the content of a
+single source: this user, that tool, the model. Anything that would combine
+two sources in one payload, a quoted message or an embedded one, is
+expressed as separate messages, each in its own envelope.
 
 ## 3. Generation bursts and halt states
 
@@ -356,8 +334,7 @@ timer, a reminder) that causes the harness to deliver a message later,
 which resumes the model like any other input. How such a mechanism works
 is out of scope; the spec defines only how the occurrence enters the
 conversation: as an `event`, as a `harness` notice when the harness itself
-speaks about it, or as a new input type the deployment defines (section 2,
-open header).
+speaks about it, or as a new input type the deployment defines (section 2).
 
 ### Another user message
 
@@ -560,8 +537,7 @@ conversation itself, rank 3 in authority: above all data, below the system
 prompt and `harness` notices. It is delivered last at a boundary
 (section 6): the human gets the last word before the model speaks.
 
-Where a deployment carries several people in one session (section 2,
-addressing), each `user` message is stamped with its author's identity by
+Where a deployment carries several people in one session, each `user` message is stamped with its author's identity by
 the harness, so the model attributes turns without trusting anything in the
 payload. All of them still share rank 3; identity distinguishes sources, it
 does not rank them.
@@ -577,9 +553,9 @@ output types let the model drive new channels **without a new template**. An
 output message is the model addressing a recipient: `assistant` speaks to
 the user, `tool_call` to a tool, and future types to new destinations,
 `ui_action` (the interface), `render` (a canvas), `harness` (the harness
-itself). The `type` is the routing label the harness dispatches on; where a
-deployment needs finer addressing it can name the recipient explicitly
-(section 2, addressing).
+itself). The kind is the routing label the harness dispatches on; where a
+deployment needs finer addressing, the header can name the recipient
+(section 2).
 
 Seen this way a tool call is not a separate mechanism, just an output
 message like any other. What makes it a *tool call* is one property alone:
@@ -758,7 +734,7 @@ Frame first, then answers to pending calls, then pushed data, then the
 user's material, and the user's own words last, closest to the model's
 reply: the human gets the last word before the model speaks.
 
-Deployment-defined types (section 2, open header) are placed by the
+Deployment-defined kinds (section 2) are placed by the
 deployment; absent a stated choice, they are delivered with the pushed data
 at position 3.
 
@@ -788,7 +764,7 @@ about where the model needs data placed; authority is about whom it trusts.
 If arriving late conferred authority, injected data could gain rank by
 timing; conflating the two axes is exactly how prompt injection works.
 
-Addressing (section 2) is a third, independent axis: which source a
+Who a message is from or to (section 2) is a third, independent axis: which source a
 message is from or to says nothing about how far it is trusted. Two `user`
 messages from different people share rank 3; the system prompt outranks
 both. Identity routes; it does not confer authority.
@@ -930,7 +906,7 @@ reclaiming context.
 ## 10. Pretraining
 
 Pretraining flows through the same template. A corpus document is an input
-message of the conventional kind `document` (open header, section 2;
+message of the conventional kind `document` (section 2;
 not part of the serving cast); a safety annotation, where present, is a
 `think` message following it:
 
