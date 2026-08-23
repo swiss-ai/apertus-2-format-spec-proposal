@@ -1,8 +1,8 @@
 # Apertus Interaction Format
 
 - [What this is](#what-this-is)
+- [Terminology](#terminology)
 - [Example conversation](#example-conversation)
-- [Vocabulary](#vocabulary)
 - [1. The frozen core](#1-the-frozen-core)
 - [2. Control tokens (reserved vocabulary)](#2-control-tokens-reserved-vocabulary)
 - [3. Message structure](#3-message-structure)
@@ -50,6 +50,53 @@ the conventions every Apertus model shares. A specific model ships a
 understand and the capabilities it supports. A capability described here as
 possible is not a promise that any one model implements it.
 
+## Terminology
+
+Terms used throughout this document:
+
+- **Model**: the language model being trained or served.
+- **Harness**: everything around the model. The chat server, agent runtime,
+  or other application that assembles the token sequence, runs tools,
+  enforces policies, and decides when the model runs. When this document says "the
+  harness does X", that means infrastructure code, never the model.
+- **Engine**: the inference server that decodes tokens (vLLM, SGLang, and
+  similar). Part of the harness in the broad sense, named separately where
+  the distinction matters.
+- **Control token**: a token registered in the tokenizer as one single ID,
+  for example `<|in|>`. Also called a special token. Ordinary text
+  never tokenizes into a control token unless special-token parsing is
+  explicitly enabled during encoding. Written `<|...|>` throughout this
+  document, and not to be confused with the `<...>` XML-style tags that
+  appear inside payloads (`<identity>`, `<tools>`): those are ordinary
+  text, `<`, `identity`, `>`, with no special status, used only to
+  organize content (section 9). All framing and trust rests on the
+  `<|...|>` tokens; `<...>` tags are soft structure anyone could type.
+- **Message**: the basic unit of the conversation, wrapped in an opening
+  and a closing control token. Inside, it always consists of a header
+  followed by a payload (section 3). The opening/closing control-token pair
+  is the message's **envelope**.
+- **Header**: the metadata region of a message (for example its type).
+- **Payload**: the content region of a message.
+- **Harness notice**: an input message of type `harness` (section 5): the
+  harness speaking as itself.
+- **Generation burst**: one stretch of decoding, from the moment the harness
+  hands control to the model to the moment the model emits the wait token
+  `<|wait|>` (or stops abnormally, section 4). Control passing briefly back to the
+  harness at a message close, including a spliced-in input message, does
+  not end the burst; only the stop does. A conversation contains many
+  bursts; one may end with a tool call still open, and the next continues
+  after the result arrives. The exchange is not one message in, one message out:
+  between two waiting states there can be many messages in both directions.
+- **Padding**: filler tokens used when sequences of different lengths are
+  batched into one fixed-size tensor (mainly in training). `<|pad|>` fills
+  the unused positions, is masked out of attention and loss, and never
+  appears inside a message.
+- **Prefix cache**: engines cache the computation for a token prefix (the KV
+  cache) and reuse it when a later request starts with the same tokens.
+  Rewriting early tokens invalidates the cache from that point onward.
+- **RAG**: retrieval-augmented generation. An external system searches a
+  corpus and pushes the results into the model's context.
+
 ## Example conversation
 
 A short conversation that exercises most of the format: a system prompt, a
@@ -57,17 +104,6 @@ user question with an inline image, the model reasoning and calling a tool, a
 second user message that lands while the tool is still running, and the reply
 once the result is back. Every convention it uses is defined below; this is
 just to show the overall shape.
-
-Before reading it, note that two bracket styles appear and they mean
-different things. The
-`<|...|>` tokens (`<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are **control
-tokens**: each is a single reserved token id, and only the harness can place
-one, so untrusted text can never forge them (section 2). The `<...>` tags in
-the system prompt (`<identity>`, `<effort>`, `<tools>`) are
-**ordinary text**: `<identity>` is just the characters `<`, `identity`, `>`,
-carrying no special status, used only to organize a payload (section 9). All
-of the conversation's framing and trust rests on the `<|...|>` tokens; the
-`<...>` tags are soft structure that anyone could type.
 
 ```
 <|in|> type=system <|hdr|>
@@ -117,48 +153,6 @@ by the harness on the result; the interleaving of the input streams, a
 `tool_result` that answers it, each self-wrapped; and `<|wait|>` closing
 every generation burst, the first two with the call still open (the model
 re-planning when the user message lands), the last after the answer.
-
-## Vocabulary
-
-Terms used throughout this document:
-
-- **Model**: the language model being trained or served.
-- **Harness**: everything around the model. The chat server, agent runtime,
-  or other application that assembles the token sequence, runs tools,
-  enforces policies, and decides when the model runs. When this document says "the
-  harness does X", that means infrastructure code, never the model.
-- **Engine**: the inference server that decodes tokens (vLLM, SGLang, and
-  similar). Part of the harness in the broad sense, named separately where
-  the distinction matters.
-- **Control token**: a token registered in the tokenizer as one single ID,
-  for example `<|in|>`. Also called a special token. Ordinary text
-  never tokenizes into a control token unless special-token parsing is
-  explicitly enabled during encoding.
-- **Message**: the basic unit of the conversation, wrapped in an opening
-  and a closing control token. Inside, it always consists of a header
-  followed by a payload (section 3). The opening/closing control-token pair
-  is the message's **envelope**.
-- **Header**: the metadata region of a message (for example its type).
-- **Payload**: the content region of a message.
-- **Harness notice**: an input message of type `harness` (section 5): the
-  harness speaking as itself.
-- **Generation burst**: one stretch of decoding, from the moment the harness
-  hands control to the model to the moment the model emits the wait token
-  `<|wait|>` (or stops abnormally, section 4). Control passing briefly back to the
-  harness at a message close, including a spliced-in input message, does
-  not end the burst; only the stop does. A conversation contains many
-  bursts; one may end with a tool call still open, and the next continues
-  after the result arrives. The exchange is not one message in, one message out:
-  between two waiting states there can be many messages in both directions.
-- **Padding**: filler tokens used when sequences of different lengths are
-  batched into one fixed-size tensor (mainly in training). `<|pad|>` fills
-  the unused positions, is masked out of attention and loss, and never
-  appears inside a message.
-- **Prefix cache**: engines cache the computation for a token prefix (the KV
-  cache) and reuse it when a later request starts with the same tokens.
-  Rewriting early tokens invalidates the cache from that point onward.
-- **RAG**: retrieval-augmented generation. An external system searches a
-  corpus and pushes the results into the model's context.
 
 ---
 
