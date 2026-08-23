@@ -40,15 +40,16 @@ one model implements it.
 
 **The guiding principle.** Every message carries the content of exactly one
 source, quarantined by control tokens. The format aims at a strong
-property: against a perfectly capable model, no single participant can craft
-input that is *ambiguous*, that could be read either as their own message or
-as a second participant speaking. Faking another voice must be impossible by
+property: against a perfectly capable model, content from one source can
+never be made to pass as content from another. Nothing a single source
+contributes can be *ambiguous*, readable either as that source's own content
+or as a second source's. Forging another source must be impossible by
 construction, not merely unlikely. Real models are not perfect and must be
 trained toward this, but the format must never make the distinction
-impossible in the first place. This is why participant content is separated
-only by envelopes, never by in-payload markup (section 9), and why a
-message's header, its routing and trust metadata, is written by the harness
-or the model, never by the content it describes.
+impossible in the first place. This is why the content of different sources
+is separated only by envelopes, never by in-payload markup (section 9), and
+why a message's header, its routing and trust metadata, is written by the
+harness or the model, never by the content it describes.
 
 ## Worked example
 
@@ -243,7 +244,7 @@ An output message:
   section 7 enforceable.
 - **One source per message.** A message's payload is the content of a
   single source: this user, that tool, the model. Structure that would join
-  two sources in one payload, a second speaker, an embedded sub-message, is
+  two sources in one payload, a quoted message, an embedded sub-message, is
   never written inside a payload; it is expressed as separate enveloped
   messages. On inputs the header is the harness's privileged annotation over
   that content; on outputs the model writes its own header, since it is the
@@ -258,8 +259,8 @@ key can carry the recipient the model is addressing. Like `type`, these are
 harness-stamped on inputs and model-written on outputs, and content never
 sets them. Two capabilities follow, both optional and profile-gated:
 
-- **More than one participant.** With `from=` and `to=` identifying
-  participants, a single session can carry several users at once, their
+- **More than one source.** With `from=` and `to=` identifying each
+  source, a single session can carry several users at once, their
   messages interleaved but never confusable, and one shared context serves
   all of them instead of duplicating a large common prefix across separate
   sessions.
@@ -270,7 +271,7 @@ sets them. Two capabilities follow, both optional and profile-gated:
 The framework permits these; a given model supports them only if its profile
 says so and its training covered them, and the exact key names and formats
 are a profile decision. What the framework fixes is the invariant: every
-distinct voice is a distinct envelope, so identity is carried by
+distinct source is a distinct envelope, so identity is carried by
 harness-controlled header fields, never inferred from payload text.
 
 ### Open vocabulary
@@ -538,7 +539,7 @@ prompt and `harness` notices. It is delivered last at a boundary
 Where a deployment carries several people in one session (section 3,
 addressing), each `user` message is stamped with its author's identity by
 the harness, so the model attributes turns without trusting anything in the
-payload. All of them still share rank 3; identity distinguishes speakers, it
+payload. All of them still share rank 3; identity distinguishes sources, it
 does not rank them.
 
 ```
@@ -763,7 +764,7 @@ about where the model needs data placed; authority is about whom it trusts.
 If arriving late conferred authority, injected data could gain rank by
 timing; conflating the two axes is exactly how prompt injection works.
 
-Addressing (section 3) is a third, independent axis: which participant a
+Addressing (section 3) is a third, independent axis: which source a
 message is from or to says nothing about how far it is trusted. Two `user`
 messages from different people share rank 3; the system prompt outranks
 both. Identity routes; it does not confer authority.
@@ -817,10 +818,10 @@ unstandardized: harness and model use whatever structure reads well.
 
 This is the concrete face of the guiding principle. Because a user can type
 any tag, `<user>` or `</message>` included, markup inside a payload can never
-mark where one voice ends and another begins: a perfectly capable model
-shown such a payload could not tell a genuine second speaker from the first
+mark where one source ends and another begins: a perfectly capable model
+shown such a payload could not tell a genuine second source from the first
 user imitating one. Only control tokens carry that distinction, because only
-the harness can place them (rule 2, section 2). So every separate voice is a
+the harness can place them (rule 2, section 2). So every separate source is a
 separate envelope, and structure inside a payload is presentation, never
 attribution or authority.
 
