@@ -9,7 +9,7 @@
 - [4. Input messages](#4-input-messages)
 - [5. Output messages](#5-output-messages)
 - [6. Authority and order](#6-authority-and-order)
-- [7. Multimodal payloads](#7-multimodal-payloads)
+- [7. Multimodal content](#7-multimodal-content)
 - [8. Soft structure (XML)](#8-soft-structure-xml)
 - [9. System prompt: default template](#9-system-prompt-default-template)
 - [10. Pretraining](#10-pretraining)
@@ -129,7 +129,7 @@ shape.
 </tools>
 <|/in|>
 
-<|in|> user <|hdr|> Is this outfit okay for Lisbon today? <|image|> <|/in|>
+<|in|> user <|hdr|> Is a light shirt okay for Lisbon today? <|/in|>
 
 <|out|> think <|hdr|> Need today's weather before advising. Call the tool. <|/out|>
 
@@ -143,14 +143,14 @@ shape.
 
 <|in|> tool_result id=get_weather:0 <|hdr|> {"tempC":19,"cond":"light rain","wind":"20kph"} <|/in|>
 
-<|out|> think <|hdr|> 19C, light rain, breezy. The photo shows short
-sleeves, so a warm layer plus a water-resistant jacket. And since they'll be
-walking a lot, waterproof shoes over the suede ones. <|/out|>
+<|out|> think <|hdr|> 19C, light rain, breezy. A light shirt alone is too
+little, so a warm layer plus a water-resistant jacket. And since they'll be
+walking a lot, waterproof shoes. <|/out|>
 
 <|out|> assistant <|hdr|> Lisbon is about 19C with light rain and some
-wind today. Your shirt is fine, but add a light layer and a water-resistant
-jacket. Since you'll be walking a lot, wear comfortable waterproof shoes
-rather than the suede ones. <|/out|>
+wind today. A light shirt is fine as a base, but add a warm layer and a
+water-resistant jacket. Since you'll be walking a lot, wear comfortable
+waterproof shoes. <|/out|>
 <|wait|>
 ```
 
@@ -168,9 +168,6 @@ What it shows:
 - `<|wait|>` ending every burst, the first two with the call still open,
   the last after the reply.
 
-In the actual token sequence, `<|image|>` is the expanded `<|img_start|> ...
-<|img_end|>` sequence from section 7; the placeholder is shown for
-readability.
 
 ---
 
@@ -187,9 +184,6 @@ only part of the format that never changes:
 | `<\|hdr\|>` | header terminator: ends the header, begins the payload |
 | `<\|wait\|>` | ends a generation burst: the model hands control to the harness and waits |
 | `<\|pad\|>` | padding between messages; it never appears inside one |
-| `<\|image\|>`, `<\|audio\|>` | inline media placeholders (section 7) |
-| `<\|img_start\|>`, `<\|img_token_start\|>`, `<\|img_end_of_row\|>`, `<\|img_end\|>` | image expansion structure (section 7) |
-| `<\|audio_start\|>`, `<\|audio_end\|>` | audio expansion structure (section 7) |
 
 Everything else lives in the header and is the profile's to define
 (section 2): what kind of message something is, who it is from or to, where
@@ -359,11 +353,10 @@ it.
 | `retrieval` | evidence pushed by a search or RAG system the model did not call | an external system |
 | `event` | an occurrence the harness relays but did not author | an external system |
 | `attachment` | a file the user supplied, of any modality | the user |
-| `user` | the user's own message: typed text, possibly with inline media | the user |
+| `user` | the user's own message | the user |
 
 A type names the channel a message arrived through; it says nothing about
-what the payload contains. A `user` message, for instance, may carry
-inline images.
+what the payload contains.
 
 ### `system`
 
@@ -446,9 +439,9 @@ through an example.
 ### `attachment`
 
 A file the user supplied, of any modality: uploaded, dragged in, or pasted.
-The payload is the parsed content, text or media expansion (section 7) or
-both; the header carries metadata such as the filename and mime type. A
-standalone image or clip is an `attachment` whose payload is the bare media
+The payload is the parsed content; the header carries metadata such as
+the filename and mime type. Where a profile supports media (section 7), a
+standalone image or clip is an `attachment` whose payload is the media
 placeholder. Its contents are material at the data floor (section 6); a
 user's typed message can delegate to it ("apply the style guide in this
 doc"), and the delegation comes from the `user` message.
@@ -459,8 +452,8 @@ doc"), and the delegation comes from the `user` message.
 
 ### `user`
 
-The user's own message: typed text, with inline media wherever it appears
-in the composition (section 7). This is the conversation itself, rank 3
+The user's own message: typed text, and where a profile supports media
+(section 7), inline media wherever it appears in the composition. This is the conversation itself, rank 3
 (section 6): above all data, below the system prompt and `harness`
 notices, and delivered last at a boundary so the human has the last word
 before the model speaks. Where a deployment carries several people in one
@@ -687,36 +680,18 @@ authority, injected data could gain rank by timing. Likewise two `user`
 messages from different people share rank 3, and the system prompt
 outranks both; identity attributes a message and does not change its rank.
 
-## 7. Multimodal payloads
+## 7. Multimodal content
 
-Media rides as **inline placeholder tokens** inside `user` and `attachment`
-payloads, `<|image|>` and `<|audio|>`, placed wherever the part appears, so
-text can come before, after, or between multiple images. A standalone image
-or clip is an `attachment` whose payload is the bare placeholder.
-
-Placeholders are inserted **only by the processor** (the harness component
-that prepares media), and can never be produced by encoding source text
-(rule 2, section 1): pasted text claiming to contain `<|image|>` yields
-ordinary characters.
-
-Downstream, the processor replaces each placeholder with the expanded
-sequence built from the tokenized media:
-
-```
-<|img_start|> H*W <|img_token_start|> ROW_OF_VISUAL_TOKENS <|img_end_of_row|> ... <|img_end|>
-
-<|audio_start|> AUDIO_TOKENS ... <|audio_end|>
-```
-
-- `H*W` is written in **ordinary digit tokens** by the processor, which
-  computes it from the actual media, so content cannot lie about its own
-  geometry. Only the structural tokens are reserved; the numbers are
-  ordinary text (section 8).
-- One `<|img_end_of_row|>` closes each row of visual tokens until the
-  declared height is reached.
-- Audio carries no size declaration: it is one-dimensional, so the closing
-  token suffices. Images declare `H*W` because 2-D rows must be
-  reconstructed.
+The framework reserves no media tokens; multimodal input is a profile
+capability. A profile that supports it defines its own media tokens and the
+sequence they expand to, following the same pattern as the rest of the
+format: content such as an image or an audio clip enters a payload as a
+placeholder inserted by the harness's media processor, which is a control
+token and therefore cannot be produced by encoding text (rule 2,
+section 1), and the processor later replaces the placeholder with the
+tokenized media. Any geometry such a placeholder needs, the dimensions of
+an image for instance, is written by the processor from the media itself
+and so cannot come from the content.
 
 ## 8. Soft structure (XML)
 
