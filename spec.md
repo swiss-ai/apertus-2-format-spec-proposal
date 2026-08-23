@@ -61,17 +61,17 @@ it uses is defined in the sections below; this example just shows the overall
 shape.
 
 The example uses two bracket styles, and they are different in kind. The
-`<|...|>` tokens (`<|sys|>`, `<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are
-**control tokens**: each is a single reserved token id, and only the harness
-can place one, so untrusted text can never forge them (section 2). The
-`<...>` tags in the system prompt (`<identity>`, `<effort>`, `<tools>`) are
+`<|...|>` tokens (`<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are **control
+tokens**: each is a single reserved token id, and only the harness can place
+one, so untrusted text can never forge them (section 2). The `<...>` tags in
+the system prompt (`<identity>`, `<effort>`, `<tools>`) are
 **ordinary text**: `<identity>` is just the characters `<`, `identity`, `>`,
 carrying no special status, used only to organize a payload (section 9). All
 of the conversation's framing and trust rests on the `<|...|>` tokens; the
 `<...>` tags are soft structure that anyone could type.
 
 ```
-<|sys|>
+<|in|> type=system <|hdr|>
 <identity>You are Aria, built by Acme. Current date: 2026-07-12.</identity>
 <effort>medium</effort>
 <tools>
@@ -80,7 +80,7 @@ of the conversation's framing and trust rests on the `<|...|>` tokens; the
     <policy>Call for current conditions. One city per call.</policy>
   </tool>
 </tools>
-<|/sys|>
+<|/in|>
 
 <|in|> type=user <|hdr|> Is this outfit okay for Lisbon today? <|image|> <|/in|>
 
@@ -167,7 +167,6 @@ Terms used throughout this document:
 
 Only these things are fixed:
 
-- a **system prompt**,
 - **input** messages (world to model),
 - **output** messages (model to world),
 - a **header terminator** inside every message,
@@ -176,7 +175,9 @@ Only these things are fixed:
 - **padding**.
 
 Everything else, meaning every message type and every header, lives inside
-messages. The format can gain new types without a change to this section.
+messages. The format can gain new types without a change to this section. The
+system prompt is one such type, a `type=system` input (section 5), not a
+structural primitive.
 
 ## 2. Control tokens (reserved vocabulary)
 
@@ -191,8 +192,7 @@ does not help an attacker; only the harness can place control tokens.
 
 | Token | Meaning |
 |-------|---------|
-| `<\|sys\|>` ... `<\|/sys\|>` | system prompt open / close |
-| `<\|in\|>` ... `<\|/in\|>`   | input message open / close |
+| `<\|in\|>` ... `<\|/in\|>`   | input message open / close (the system prompt is a `type=system` input) |
 | `<\|out\|>` ... `<\|/out\|>` | output message open / close |
 | `<\|hdr\|>` | header terminator: ends the header, begins the payload |
 | `<\|wait\|>` | ends every generation burst: the model hands control to the harness and waits |
@@ -210,7 +210,8 @@ rules are:
 3. the model's sampled vocabulary contains exactly four control tokens:
    `<|out|>`, `<|/out|>`, `<|hdr|>`, and `<|wait|>`; engines suppress
    every other registered special id at decode time. An allowlist, not a
-   blocklist: it covers the input and system framing, `<|pad|>`, the
+   blocklist: it covers the input framing (`<|in|>`, `<|/in|>`, including
+   the system prompt), `<|pad|>`, the
    media tokens, and any reserved or legacy id the tokenizer carries (a
    BOS/EOS inherited from a base tokenizer, unassigned slots), and an id
    registered later is suppressed by default. The mask applies to
@@ -380,6 +381,7 @@ canonical delivery order; order and authority are defined in section 7.
 
 | type | carries | order | authority |
 |------|---------|-------|-----------|
+| `system` | the standing instructions: identity, behavior, tools, effort (section 10); persistent, edited in place | 0 (preamble) | 1 |
 | `harness` | the harness speaking **as itself**: transient notices, never state | 1 | 2 |
 | `tool_result` | the result for a pending `tool_call`; its header echoes the call's id | 2 | 4 (data) |
 | `retrieval` | evidence pushed by an external search/RAG system the model did not call | 3 | 4 (data) |
@@ -399,6 +401,15 @@ Note that the same document can arrive through three channels:
 query), **unsolicited** (`retrieval`: pushed by an external system), or
 **user-supplied** (`attachment`). The type records how content arrived,
 which the model needs for relevance and trust judgments.
+
+### `system`
+
+The standing context every other message is read against: identity,
+behavior, the tool inventory, and effort (section 10 gives the default
+template). It is an ordinary input in structure, but unlike the others it is
+not delivered at a boundary; it opens the sequence and persists, edited in
+place by the harness rather than re-sent, which keeps the prefix cache warm.
+It is the single highest authority, rank 1 (section 7): nothing overrides it.
 
 ### `harness`
 
@@ -758,7 +769,7 @@ A separate axis from delivery order. Trust follows *authorship*, not
 delivery:
 
 ```
-high  1  system prompt                                    never overridden
+high  1  type=system (the system prompt)                   never overridden
       2  harness messages     may steer, never repeal the system prompt
       3  user messages        the conversation
 low   4  tool_result / retrieval / attachment / event     data only
@@ -844,11 +855,12 @@ delimit messages, and only message types carry rank.
 
 ## 10. System prompt: default template
 
-The system prompt shares the message structure but carries no header:
-`<|sys|> PAYLOAD <|/sys|>`.
+The system prompt is an input message of type `system` (section 5), the
+standing context at authority rank 1:
+`<|in|> type=system <|hdr|> PAYLOAD <|/in|>`.
 
 ```
-<|sys|>
+<|in|> type=system <|hdr|>
 <identity>
   You are {name}, built by {org}. Current date: {date}.
 </identity>
@@ -875,7 +887,7 @@ The system prompt shares the message structure but carries no header:
   {platform, user settings, enabled features: the volatile stratum; keep it
    last for prefix-cache friendliness}
 </environment>
-<|/sys|>
+<|/in|>
 ```
 
 ### Canonical system prompt tags
