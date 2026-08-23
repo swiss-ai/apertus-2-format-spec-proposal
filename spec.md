@@ -60,6 +60,16 @@ and once the result comes back it thinks again and answers. Every convention
 it uses is defined in the sections below; this example just shows the overall
 shape.
 
+The example uses two bracket styles, and they are different in kind. The
+`<|...|>` tokens (`<|sys|>`, `<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are
+**control tokens**: each is a single reserved token id, and only the harness
+can place one, so untrusted text can never forge them (section 2). The
+`<...>` tags in the system prompt (`<identity>`, `<effort>`, `<tools>`) are
+**ordinary text**: `<identity>` is just the characters `<`, `identity`, `>`,
+carrying no special status, used only to organize a payload (section 9). All
+of the conversation's framing and trust rests on the `<|...|>` tokens; the
+`<...>` tags are soft structure that anyone could type.
+
 ```
 <|sys|>
 <identity>You are Aria, built by Acme. Current date: 2026-07-12.</identity>
@@ -100,16 +110,6 @@ rather than the suede ones. <|/out|>
 (In the actual token sequence, `<|image|>` above is the expanded `<|img_start|> ...
 <|img_end|>` sequence from section 8; the placeholder is shown for
 readability.)
-
-The two bracket styles are different in kind. The `<|...|>` tokens
-(`<|sys|>`, `<|in|>`, `<|hdr|>`, `<|out|>`, `<|wait|>`) are **control
-tokens**: each is a single reserved token id, and only the harness can place
-one, so untrusted text can never forge them (section 2). The `<...>` tags in
-the system prompt (`<identity>`, `<effort>`, `<tools>`) are **ordinary
-text**: `<identity>` is just the characters `<`, `identity`, `>`, carrying
-no special status, used only to organize a payload (section 9). All of the
-conversation's framing and trust rests on the `<|...|>` tokens; the `<...>`
-tags are soft structure that anyone could type.
 
 What it demonstrates: an inline image inside
 a `user` message; the model-written `id=get_weather:0` on the call, echoed
