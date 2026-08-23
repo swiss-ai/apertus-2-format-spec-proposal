@@ -56,8 +56,8 @@ in-payload markup (section 9).
 A short conversation: the system prompt, a user question with an inline
 image, then the model thinks, calls a tool, receives the result **and** a
 second user message that arrived while it was working, thinks again, and
-answers. Every convention used here is
-specified in the sections below; read it first for shape.
+answers. Every convention it uses is defined in the sections below; this
+example just shows the overall shape.
 
 ```
 <|sys|>
