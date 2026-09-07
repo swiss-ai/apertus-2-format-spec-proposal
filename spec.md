@@ -1,4 +1,4 @@
-# Apertus Interaction Format
+# Apertus Interaction Format: Specification and Reference Profile
 
 **Abstract.** The Apertus Interaction Format specifies how everything a
 language model reads and writes is represented as a single token sequence.
@@ -27,7 +27,7 @@ prompt, user turns, the model's thinking, and tool use.
 - Part II. The reference profile
   - [7. Scope](#7-scope)
   - [8. Example conversation](#8-example-conversation)
-  - [9. Header format](#9-header-format)
+  - [9. Header layout](#9-header-layout)
   - [10. Input types](#10-input-types)
   - [11. Output types](#11-output-types)
   - [12. Trust ranks and delivery order](#12-trust-ranks-and-delivery-order)
@@ -72,10 +72,13 @@ tokens (section 1, rule 3).
 
 The format is what every Apertus model shares: the control tokens, the
 message structure, how generation proceeds, and the trust model. A
-**profile** completes it for one model: the header format, the message
+**profile** completes it for one model: the header layout, the message
 types and their ranks, and the conventions the model was trained on. A
 profile is trained into the model's weights and implemented by the
-harness that serves it. This document specifies the format (Part I) and a
+harness that serves it. The relation is the one between a codec standard
+and its profiles, or the Bluetooth core specification and its profiles:
+the format is shared, and a profile fixes what a given model uses and
+how. This document specifies the format (Part I) and a
 **reference profile** (Part II) covering the conventions current
 deployments share. Every example in this document uses the reference
 profile. A specific model's profile, the one for Apertus 2 for instance,
@@ -106,9 +109,11 @@ Terms used throughout this document:
 - **Engine**: the inference server that decodes tokens (vLLM, SGLang, and
   similar). Part of the harness, named separately where the distinction
   matters.
-- **Source**: the originator of a message's content: a particular user, a
-  tool, the harness, the model. Every message carries the content of
-  exactly one source.
+- **Source**: the party a message's content was received from: for an
+  input, the party that delivered it to the harness (a particular user, a
+  tool, the harness itself); for an output, the model. A user who pastes a
+  tool's log is the source of the pasted log. Every message carries the
+  content of exactly one source.
 - **Control token**: a token registered in the tokenizer as a single ID,
   for example `<|in|>`. Written `<|...|>` throughout this document, and
   not to be confused with the `<...>` XML-style tags that appear inside
@@ -149,9 +154,8 @@ Terms used throughout this document:
 
 ## 1. Control tokens
 
-A control token is a **single registered token ID** in the tokenizer,
-written as a readable ASCII word. There are few of them, and they are the
-only part of the format that never changes:
+A control token is a reserved token written as a readable ASCII word.
+The format defines seven:
 
 | Token | Role |
 |-------|------|
@@ -161,35 +165,39 @@ only part of the format that never changes:
 | `<\|wait\|>` | ends a generation burst: the model hands control to the harness and waits |
 | `<\|pad\|>` | padding between messages; it never appears inside one |
 
-Everything else lives in the header and is the profile's to define
-(section 2): what kind of message something is, who it is from or to, where
-it sits. New types of message need no change here. The system prompt is one
-such type, a `system` input (section 10), and has no dedicated token.
+They suffice for all message passing; a profile adds a control token only
+where these cannot do the job, media placeholders being the usual case
+(section 6). Everything else about a message, what type it is, who it is
+from or to, where it sits, is stated in the header, which the profile
+defines (section 2). New types of message need no change here; the system
+prompt, for instance, is a `system` input (section 10) with no dedicated
+token.
 
 ### Why control tokens cannot be forged
 
-All external or untrusted text is encoded with special-token parsing
-disabled. A user or tool that types the literal string `<|in|>` produces
-the ordinary character tokens `<`, `|`, `in`, and so on. Knowing the glyphs
-therefore does not help an attacker: text never becomes a control token,
-because only the harness encodes with special-token parsing on, and the
-model can sample only its four output tokens (rule 3).
+1. Each control token is registered in the tokenizer as one special-token
+   ID.
+2. Text is always encoded with special-token parsing disabled, whatever
+   its source; control tokens enter the sequence only as ids the harness
+   places or the model samples.
 
-The surface forms above are a recommendation. What the format depends on
-are four rules:
+A user or tool that types the literal string `<|in|>` therefore produces
+the ordinary character tokens `<`, `|`, `in`, and so on. Which control
+tokens the model can sample is fixed by the engine (rule 3).
 
-1. each control token is one registered special-token ID;
-2. untrusted text is always encoded with special tokens disabled;
-3. at decode time the model may emit only four control tokens, `<|out|>`,
-   `<|/out|>`, `<|hdr|>`, and `<|wait|>`; the engine suppresses every other
-   registered special id. This applies to sampling only: tokens the harness
-   places in the context are unaffected.
-4. the engine stops decoding only at `<|wait|>`; no other token, `<|/out|>`
-   or a legacy EOS included, is configured as a stop. The published
-   generation config declares `<|wait|>` as the end-of-sequence id, so a
-   default-configured engine stops correctly. An engine stopped at a message
-   close returns a half-finished burst, typically the think without the
-   answer.
+### What the engine must do
+
+Two rules bind the decoding engine; the harness that serves the model is
+responsible for meeting them.
+
+3. The engine blocks every special id in the tokenizer except four:
+   `<|out|>`, `<|/out|>`, `<|hdr|>`, and `<|wait|>`.
+4. The engine stops decoding only at `<|wait|>`, which the model's
+   generation config declares as the end-of-sequence id.
+
+A reference library that configures engines and parses output for this
+format, in the manner of openai-harmony or mistral-common, is the intended
+way to get both right.
 
 ## 2. Message structure
 
@@ -213,97 +221,88 @@ header.
 
 ### Header
 
-The header is opaque to the format. What it says about a message, and
-how, is the model's **profile**, and the harness serving that model is
-tuned to that profile's header format: it routes, ranks, and dispatches on
-it. A profile typically has the header state what kind of message this is
-(a user message, a user's document, the system prompt, a tool call) and may
-add who it is from or to, where it sits in the conversation, or fields
-specific to one type, such as a call id.
+The header is the message's metadata: what is stated about the message,
+apart from its content. It is opaque to the format; what it states, the
+message's type first of all (a user message, a user's document, the system
+prompt, a tool call), and how it is written are defined by the profile
+(section 6).
 
-Who writes the header follows from the direction of the message. On an input the
-harness writes it: every value in it is either harness-authored or, where
-it originates elsewhere (an attachment's filename, the id echoed on a
-`tool_result`), admitted by the harness after a shape check (section 10).
-The type of an input message therefore comes from the channel it arrived
-through; nothing in the content can claim a type for itself, which is what
-makes the trust model of section 4 enforceable. On an output the model
-writes the header, since it is the sole author of its output. The harness
-then parses it to route the message, so a harness supports a model's
-profile in both directions: it writes headers in that format on the way in
-and reads them in that format on the way out.
+On an input the harness writes the header and the model reads it. The type
+records how the content arrived, which is what rank follows (section 4);
+nothing in the header comes from the source of the content. On an output
+the model writes the header and the harness parses it to act on the
+message; in both directions the layout is the one the model's profile
+defines, which the harness serving that model implements.
 
-The reference profile's header format is defined in section 9.
+The reference profile's header layout is defined in section 9.
 
 ### Payload
 
 The payload is the content of the message, and it is the content of
-exactly one source: this user, that tool, the model. Anything that would combine
-two sources in one payload, a quoted message or an embedded one, is
-expressed as separate messages, each in its own envelope.
+exactly one source. Content the harness received from different parties
+goes into separate messages, each in its own envelope; a quoted or
+embedded message is a message of its own. Nothing in a payload can open an
+envelope or alter the provenance its header states (rules 2 and 3,
+section 1).
 
 ### Structure inside a payload
 
 Inside a payload, XML-style tags such as `<identity>` or `<answer>` can
-organize content. They are ordinary text, `<identity>` tokenizes as `<`,
-`identity`, `>`, and the harness and model use whatever structure reads
-well; the format fixes no tag vocabulary; the reference profile's
-system prompt layout (section 13) is one example.
+organize content. They are ordinary text (`<identity>` tokenizes as `<`,
+`identity`, `>`), and the format fixes no tag vocabulary; the reference
+profile's system prompt layout (section 13) is one example.
 
-Because such tags are text, anyone can type them, including a user typing
-`<user>` or `</message>`. So a tag inside a payload cannot mark where one
-source ends and another begins: a perfectly capable model shown such a
-payload could not distinguish a second source from the first one imitating
-it. That distinction is carried by the envelope alone, which no payload
-can produce (rules 2 and 3, section 1), and it is why every source gets its
-own message. Structure inside a payload is presentation; boundaries
-between sources and their rank live in the envelope and the header.
+Because such tags are text, anyone can type them, a user typing `<user>`
+or `</message>` included, so a tag cannot mark where one source's content
+ends and another's begins. Only the envelope marks that boundary.
 
 ## 3. Generation
 
 The sequence grows in **bursts**. A burst begins when the harness hands
 control to the model and ends only when the model emits `<|wait|>`. Within
 a burst the model generates output messages in any order and number: think,
-tool call, think, tool call, reply. Between bursts the harness appends
-input messages.
+tool call, think, tool call, reply.
 
 ### Message boundaries
 
 After every message close, `<|/out|>` or `<|/in|>`, control returns briefly
 to the harness. If input is pending (a queued user message, a tool result,
-a `harness` notice), the harness appends it in delivery order (section 12)
-before the model continues; otherwise the model continues uninterrupted.
-These returns do not end the burst. Since input can appear at any boundary,
-the model treats every boundary as a point where its plan may need to
-change.
-
-### Input during a burst
-
-Input that arrives while the model is generating is appended at the next
-message boundary, ahead of any further output the model had planned, and
-the model's subsequent generation is conditioned on it. The burst continues
-across the splice: everything already generated is kept, including the
-message in progress, which the model finishes first. A user message that
-arrives while a tool call is pending does not cancel the call; the result
-is still delivered (section 12), and the model decides what to do with it.
-
-A deployment may also let the model schedule input for itself, for instance
-a tool call that sets a timer so the harness delivers a message later. How
-that works is out of scope; the format fixes only that the occurrence
-enters the sequence as an input message at a boundary: an `event`, a
-`harness` notice when the harness itself speaks about it, or a type the
-deployment defines (section 2).
+a `harness` notice), the harness appends it before the model continues,
+several messages in the order the profile fixes (delivery order,
+section 12); otherwise the model continues uninterrupted. These returns
+do not end the burst. Since input can appear at any boundary, within a
+burst as well as between bursts, the model treats every boundary as a
+point where its plan may need to change.
 
 ### Waiting
 
 `<|wait|>` means the model has nothing more to emit right now; the engine
-halts decoding there (rule 4, section 1). Anything the harness delivers
-next resumes the model: a tool result, a `user` message, a `harness`
-notice, an `event`. Open tool calls do not change this. A call stays open
-until its result arrives (section 10), results may arrive together or across
-several resumptions, and the model waits the same way whether or not
-results are still owed. A reply ending in a question and one ending in a
-statement close identically.
+halts decoding there (rule 4, section 1). The next input the harness
+delivers resumes the model: a tool result, a `user` message, a `harness`
+notice, an `event`. An open call (below) does not change this: the model
+waits the same way whether or not an answer is still owed, and a reply
+ending in a question closes like one ending in a statement.
+
+### Calls
+
+Outputs have one property the format tracks: whether an answer must
+come back. An output may be a **call**, obliging exactly one input
+message, its **result**, to answer it; every other output answers nothing.
+A call stays open until its result arrives, across bursts and across
+whatever other input is delivered meanwhile: a user message that arrives
+while a call is open does not cancel it. Call and result are paired by an
+id the profile defines. The reference profile's call type is the tool call
+(section 11).
+
+### Context management
+
+As a conversation grows, the harness may remove output messages from the
+sequence to reclaim context. Which types it may remove, and when, is the
+profile's **memory policy** (section 6); the model is trained under that
+policy, so it does not rely on an earlier output still being present.
+Removal takes whole messages and leaves the burst's `<|wait|>` in place.
+Whether an output is shown to the user is likewise the harness's choice,
+not a property of the message.
 
 ### Abnormal stops
 
@@ -311,67 +310,31 @@ Decoding can also stop for other reasons, a token limit reached
 mid-payload or an engine failure, and output can violate message framing
 (a missing `<|hdr|>`, a control token in an illegal position) whether or
 not decoding stopped. Both cases are handled alike: the harness discards
-everything from the first bad token back to the last cleanly closed
-message, since output after a violation is untrusted even where it happens
-to parse, and then either retries or resumes the model with a `harness`
-notice describing what was cut off, which may quote the discarded fragment
-as inert data. Engines that support constrained decoding may instead make
-ill-formed framing impossible to generate.
+everything after the last cleanly closed message, since output after a
+violation is untrusted even where it happens to parse, and then retries or
+resumes decoding from there. Engines that support constrained decoding may
+instead make ill-formed framing impossible to generate.
 
 ## 4. Trust
 
-Three properties of a message are kept apart on purpose: where its content
-came from, how far it is trusted, and where it is placed. This section
-defines them; the reference profile's concrete ranking and order are in
-section 12.
-
-### Provenance
-
-An input's type records the channel its content arrived through. The
-harness stamps it, and the sender has no say in it (section 2). The same
-document can reach the model **solicited**, as the result of something the
-model itself asked for; **pushed**, by a system the model did not call; or
-**supplied by the user**. The type says which, and that is what the model
-needs for relevance and trust.
+A sequence carries text from several parties: the system prompt, the
+harness, the users, and whatever tools, documents, and other systems
+deliver. Instructions in it do not all count the same. The system prompt
+outranks a user's request, and text in a document or a tool result is no
+instruction at all, however it is phrased. The model has to tell these
+apart, and it cannot do so from the text, since any party can write any
+text.
 
 ### Rank
 
-When contents conflict, the message from the higher-ranked source wins.
-Rank follows the author of the content, which is what the type encodes. It
-is granted by the profile and trained into the model; it is not read off a
-type's name. A type the profile has not ranked is data: material to work
-with, carrying no instruction authority, and content in a data-ranked
-message is not a command, whatever it claims.
-
-Authorship is decided down to a single byte. A message the harness wrote
-in full can carry the harness's own authority; a message containing one
-byte the harness did not write is relayed content and ranks as data. That
-line is what lets the harness both steer the model and pass on untrusted
-material without the two ever sharing a rank.
-
-### Delivery order
-
-When several inputs land at the same boundary, the profile fixes the order
-in which they appear. Order is about where the model needs content placed.
-
-### The axes are independent
-
-Order, authority, and identity (who a message is from or to, where the
-header names it) are independent. None follows from another: a message can
-be delivered early and trusted least, or delivered last and outrank what
-came before, and two messages from different people can share a rank. The
-separation is what makes injection fail. If arriving late conferred
-authority, injected data could gain rank by timing; if identity conferred
-authority, claiming one would.
-
-### The debt
-
-Outputs have one property the format tracks: whether an answer must
-come back. An output may **open a debt**, obliging exactly one input
-message to close it; every other output answers nothing. A debt stays open
-across bursts until its closing input arrives (section 3), and the two are
-paired by an id the profile defines. The reference profile's debt-opening
-type is the tool call (section 11).
+The profile grants each input type a rank, or none, and trains the model
+on it. A ranked type is a party that may direct the model, and a higher
+rank prevails over a lower one. A type without rank is data: material the
+model works with, whose content is never followed as an instruction,
+whatever it claims. Since the harness sets the type from how the content
+arrived (section 2), rank follows the way the content arrived and nothing
+the content says: what a user types and what the user attaches are two
+types. The reference profile's ranking is in section 12.
 
 ## 5. Pretraining
 
@@ -410,9 +373,9 @@ decode as well.
 
 Whether annotation tokens receive loss is the recipe's choice: masked,
 the annotation is conditioning context; unmasked, it also trains the
-model's own register for assessing what it reads. Memory and visibility
-policies (section 11) are serving-time behavior enforced by a harness;
-pretraining has none.
+model's own register for assessing what it reads. Memory policy
+(section 11) is serving-time behavior enforced by a harness; pretraining
+has none.
 
 ## 6. What a profile defines
 
@@ -420,14 +383,14 @@ A profile completes the format for one model. It is trained into the
 model's weights and implemented by the harness that serves the model. A
 profile defines:
 
-1. **Header format**: how a header is written and parsed, and what it
+1. **Header layout**: how a header is written and parsed, and what it
    states about a message.
 2. **Types**: the input and output types the model understands, with what
    each carries and who supplies or receives it.
 3. **Trust ranks and delivery order**: the rank of each input type and
    the order in which inputs delivered together appear.
-4. **Debt-opening types and ids**: which outputs oblige a closing input,
-   and the id convention that pairs the two.
+4. **Call types and ids**: which outputs are calls, which inputs their
+   results, and the id convention that pairs the two.
 5. **Payload conventions**: the serialization of payloads where a type
    needs one, such as a tool call's name and arguments.
 6. **Additional control tokens**: a profile may reserve control tokens
@@ -508,7 +471,7 @@ What it shows:
 - the two kinds of message: inputs the harness feeds in (`system`, `user`,
   `tool_result`), outputs the model generates (`think`, `tool_call`,
   `assistant`);
-- the reference profile's header format (section 9): a leading word for
+- the reference profile's header layout (section 9): a leading word for
   the message type, then optional keys like the call `id`, which the
   model writes on the call and the harness echoes on the result;
 - input arriving mid-task: the second `user` message is delivered while the
@@ -517,7 +480,7 @@ What it shows:
 - `<|wait|>` ending every burst, the first two with the call still open,
   the last after the reply.
 
-## 9. Header format
+## 9. Header layout
 
 A header is a single word naming the message type. The reference profile
 uses it to cover the types every deployment has today: `system`, `user`,
@@ -586,8 +549,7 @@ the model anything it should act on.
 
 The input that closes a pending `tool_call`. It is the one type of input
 the model solicited: every other input arrives on its own initiative, a
-tool result arrives because the model asked for it (section 11 on the debt a
-tool call opens). Each `tool_result` carries exactly one result, and its
+tool result arrives because the model asked for it (section 3). Each `tool_result` carries exactly one result, and its
 header carries the id of the call it answers, echoed from the call so the
 model can match the two by exact string (section 11 defines the id). A
 failed call closes the same way, with a result whose payload describes the
@@ -676,8 +638,8 @@ canonical choices at the moment.
 ### One distinction: does an answer come back?
 
 All four share the same structure. What sets `tool_call` apart is that it
-opens a debt (section 4): exactly one input message, its `tool_result`,
-must come back to close it (section 10). The other three answer nothing; a
+is a call (section 3): exactly one input message, its `tool_result`, must
+come back to close it (section 10). The other three answer nothing; a
 reply, a thinking trace, a committed answer, a rendered canvas are
 fire-and-forget. Modeling such outputs as tool calls would force a
 meaningless result message into the sequence, which is why they are types
@@ -758,7 +720,7 @@ open; the Porto result arrives, and the next burst answers.
 
 ### Tool call ids
 
-The id names the debt. The model writes it into the `tool_call` header,
+The id names the call. The model writes it into the `tool_call` header,
 the harness echoes it on the matching `tool_result`, and the same string at
 both ends lets the model pair a result with its call by exact match instead
 of counting back through the sequence. The model writes ids as
