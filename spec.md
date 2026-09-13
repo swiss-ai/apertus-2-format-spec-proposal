@@ -338,44 +338,33 @@ types. The reference profile's ranking is in section 12.
 
 ## 5. Pretraining
 
-Pretraining uses the same format. A corpus document is an input message of
-a type the profile sets aside for training (section 14 for the reference
-profile); where the recipe annotates documents, the annotation is an
-output message following the document it belongs to. Since every phase
-shares the format, pretraining does not have to precede post-training:
-refreshing a model's knowledge later is a matter of feeding more document
-messages.
+Pretraining uses the same format, on purpose. A model that reads corpus
+documents in the envelopes it will serve in can have pretraining and
+post-training overlap, document messages and conversations trained on in
+one stream; this document makes that possible and leaves it as an option,
+with the recipe for it as future work. A corpus document is an input
+message of a type the profile sets aside for training (section 14 for the
+reference profile); the type has no rank (section 4), so the model learns
+from its first token that document content is no instruction. Where the
+recipe annotates documents, the annotation is an output message following
+the document it belongs to.
 
 ### Sequences
 
-A sequence boundary falls between messages. An over-long document is split
-into several complete document messages, training sequences are filled
-with whole messages plus `<|pad|>`, and a document and its annotation
-share a sequence. Message boundaries take the place of BOS/EOS document
-separators, and bulk pretraining sequences carry no system prompt.
-Documents sit at the trust floor, so the model learns from its first token
-that document content carries no instruction authority.
-
-Split parts carry no continuation markers. A document is split only when
-it exceeds the sequence length, so two parts of the same document do not
-share a context and a marker would be metadata the model cannot use. The
-model has to handle partial documents in any case, since retrieval
-delivers chunks of documents by construction.
+A sequence boundary falls between messages: a training sequence holds
+whole messages, filled to length with `<|pad|>`, and a document longer
+than the sequence is split into several complete document messages.
+Message boundaries take the place of BOS/EOS separators.
 
 ### Loss
 
-Document payloads are ordinary language-modeling targets. Output messages
-are the model's own, so their framing, header included, is a prediction
-target wherever the message carries loss. Input framing is excluded from
-the loss in every phase, so the model does not learn to emit input
-messages; at serving time, rule 3 (section 1) suppresses those ids at
-decode as well.
-
-Whether annotation tokens receive loss is the recipe's choice: masked,
-the annotation is conditioning context; unmasked, it also trains the
-model's own register for assessing what it reads. Memory policy
-(section 11) is serving-time behavior enforced by a harness; pretraining
-has none.
+The document payload is the language-modeling target. The envelope and
+header around it, `<|in|>`, the header, `<|hdr|>`, and `<|/in|>`, receive
+no loss, in pretraining as in every later phase, so the model never learns
+to emit an input message; rule 3 (section 1) enforces the same at decode.
+An annotation is an output message and so the model's own: whether it
+receives loss is the recipe's choice, and where it does, its envelope and
+header are targets too.
 
 ## 6. What a profile defines
 
@@ -387,28 +376,27 @@ profile defines:
    states about a message.
 2. **Types**: the input and output types the model understands, with what
    each carries and who supplies or receives it.
-3. **Trust ranks and delivery order**: the rank of each input type and
-   the order in which inputs delivered together appear.
+3. **Trust ranks and delivery order**: which input types have a rank and
+   how they rank, and the order in which inputs delivered together
+   appear.
 4. **Call types and ids**: which outputs are calls, which inputs their
    results, and the id convention that pairs the two.
 5. **Payload conventions**: the serialization of payloads where a type
    needs one, such as a tool call's name and arguments.
-6. **Additional control tokens**: a profile may reserve control tokens
-   beyond the seven, subject to rules 1 to 4 (section 1). Media
-   placeholders are the common case: a placeholder inserted into a payload
-   by the harness's media processor and later replaced by the tokenized
-   media, with any geometry it needs, the dimensions of an image for
-   instance, written by the processor from the media itself.
-7. **Memory policy**: which output messages the harness may strip as the
-   conversation grows.
+6. **Additional control tokens**: only where the seven cannot do the job,
+   subject to rules 1 to 4 (section 1). Media placeholders are the usual
+   case: a control token the harness's media processor inserts into a
+   payload and later replaces with the tokenized media.
+7. **Memory policy**: which output messages the harness may remove as
+   the conversation grows (section 3).
 8. **System prompt layout**: where the standing context lives inside the
    system message.
-9. **Pretraining conventions**: the document type and how raw text is
-   scored.
+9. **Pretraining conventions**: the document type, annotations, sequence
+   conventions, and how raw text is scored.
 
-Part II defines a reference profile along this list, in this order. A
-profile for a specific model is a separate document that adopts the
-reference profile and records where it differs.
+Part II defines a reference profile along this list. A profile for a
+specific model is a separate document that adopts the reference profile
+and records where it differs.
 
 ---
 
