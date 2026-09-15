@@ -626,9 +626,9 @@ last word before the model speaks.
 ## 10. Output types
 
 An output message is the model addressing a recipient; the table says
-whom. These are the reference profile's output types. A profile adds
-types when the model needs to address a new receiver, a canvas, the
-interface, the harness itself; the four below are common ones.
+whom. The profile defines the receivers the model can address, one output
+type each; a canvas or the interface would be others. These are the
+reference profile's four.
 
 | type | carries | addressed to |
 |------|---------|--------------|
@@ -639,13 +639,10 @@ interface, the harness itself; the four below are common ones.
 
 ### Which outputs are calls
 
-Only `tool_call` is a call in the sense of section 3: it obliges exactly
-one input message, its `tool_result`, to come back and close it
-(section 9). The other three answer nothing. A thinking trace, a reply,
-and a committed answer are complete when written; nothing has to come
-back for them. Modeling them as calls would force a meaningless result
-message into the sequence after each one, which is why they are types of
-their own.
+Of the four, only `tool_call` is a call in the sense of section 3: it
+obliges exactly one input message, its `tool_result`, to come back and
+close it (section 9). The other three answer nothing: a thinking trace, a
+reply, and a committed answer are complete when written.
 
 ### `think`
 
@@ -672,8 +669,8 @@ format.
 
 ### `verifiable_answer`
 
-The answer to a task, in the byte-exact form its verifier defines: a bare
-value, JSON, code. It is a channel for automated grading and for
+The answer to a task, in the form its verifier defines: a bare value,
+JSON, code. It is a channel for automated grading and for
 reinforcement learning with verifiable rewards, which need the model's
 claim as a payload to parse rather than a span to find in prose. A task
 with several verifiable parts declares a structured payload with one field
@@ -700,24 +697,29 @@ its `args`, and an engine can constrain decoding against that grammar; the
 header carries the call's id and nothing else of the call.
 
 ```
-<|out|> think <|hdr|> Compare the two cities; fetch both in parallel. <|/out|>
+<|out|> think <|hdr|> Need tomorrow's weather and calendar; fetch both. <|/out|>
 
-<|out|> tool_call {"id":"get_weather:4"} <|hdr|> {"name":"get_weather","args":{"city":"Lisbon"}} <|/out|>
+<|out|> tool_call {"id":"get_weather:4"} <|hdr|> {"name":"get_weather","args":{"city":"Lisbon","day":"tomorrow"}} <|/out|>
+
+<|in|> user <|hdr|> and I'd rather not be outside after 6pm <|/in|>
+
+<|out|> tool_call {"id":"get_calendar:5"} <|hdr|> {"name":"get_calendar","args":{"day":"tomorrow"}} <|/out|>
+<|wait|>
 
 <|in|> tool_result {"id":"get_weather:4"} <|hdr|> {"tempC":24,"cond":"sunny"} <|/in|>
 
-<|out|> tool_call {"id":"get_weather:5"} <|hdr|> {"name":"get_weather","args":{"city":"Porto"}} <|/out|>
-<|wait|>
+<|in|> tool_result {"id":"get_calendar:5"} <|hdr|> [{"time":"15:00","title":"Dentist"}] <|/in|>
 
-<|in|> tool_result {"id":"get_weather:5"} <|hdr|> {"tempC":19,"cond":"cloudy"} <|/in|>
-
-<|out|> assistant <|hdr|> Lisbon will be warmer than Porto today: 24C and sunny versus 19C and cloudy. <|/out|>
+<|out|> assistant <|hdr|> Tomorrow is sunny and 24C, and your only appointment is the dentist at 15:00. A walk along the river in the morning works, and you'd be back inside well before 6pm. <|/out|>
 <|wait|>
 ```
 
-The Lisbon result was ready before the model wrote the Porto call, so the
-harness spliced it in. `<|wait|>` then ends the burst with one call still
-open; the Porto result arrives, and the next burst answers.
+The model set out to make two calls, so it does not wait after the first:
+control returns to the harness at the message close, the user's message
+that arrived meanwhile is spliced in there, and the model goes on with the
+calendar call it had planned. Only then, with nothing left to emit until
+the results come, does it wait, with both calls open. The two results
+arrive together, and the next burst answers.
 
 ### Tool call ids
 
