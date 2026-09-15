@@ -467,10 +467,11 @@ What it shows:
 
 ## 8. Header layout
 
-In the reference profile the header is a single word, followed where the
-type has fields by one JSON object holding them. The word is the message
-type: on an input it names where the message comes from, on an output
-whom it is for (sections 9 and 10). The fields are the call id on
+In the reference profile the header holds the message's type, the class
+of message this is, as a single word, and may hold more: where a header
+has more fields, one JSON object with them follows the word. Input types
+are named for where the content comes from, output types for what the
+message is (sections 9 and 10). The fields are the call id on
 `tool_call` and `tool_result` (section 10), the snippet id on `retrieval`
 (section 9), and, where the harness can name the sender, `from` on
 `event` and `retrieval` (section 9):
@@ -624,11 +625,10 @@ last word before the model speaks.
 
 ## 10. Output types
 
-An output message is the model addressing a recipient. These are the
-reference profile's output types. New types let the model address new
-receivers, a canvas, the interface, the harness itself, and support other
-innovations, with no change to the framing. The following are the
-canonical choices at the moment.
+An output message is the model addressing a recipient; the table says
+whom. These are the reference profile's output types. A profile adds
+types when the model needs to address a new receiver, a canvas, the
+interface, the harness itself; the four below are common ones.
 
 | type | carries | addressed to |
 |------|---------|--------------|
@@ -637,22 +637,23 @@ canonical choices at the moment.
 | `verifiable_answer` | the task's answer in extractable form | the harness, as a grading channel |
 | `tool_call` | a call to one tool: its name and arguments | the tool runtime |
 
-### One distinction: does an answer come back?
+### Which outputs are calls
 
-All four share the same structure. What sets `tool_call` apart is that it
-is a call (section 3): exactly one input message, its `tool_result`, must
-come back to close it (section 9). The other three answer nothing; a
-reply, a thinking trace, a committed answer, a rendered canvas are
-fire-and-forget. Modeling such outputs as tool calls would force a
-meaningless result message into the sequence, which is why they are types
-of their own.
+Only `tool_call` is a call in the sense of section 3: it obliges exactly
+one input message, its `tool_result`, to come back and close it
+(section 9). The other three answer nothing. A thinking trace, a reply,
+and a committed answer are complete when written; nothing has to come
+back for them. Modeling them as calls would force a meaningless result
+message into the sequence after each one, which is why they are types of
+their own.
 
 ### `think`
 
 The model's reasoning. Whether the harness shows it to the user or keeps it
 hidden is the harness's choice. Think messages from completed turns are
-stripped under the memory policy (section 12), so a conclusion the model
-must keep across turns belongs in an `assistant` message or a tool call.
+removed under the memory policy (section 12), so a conclusion the model
+must keep across turns belongs in an `assistant` message or a tool call,
+which persist.
 
 ```
 <|out|> think <|hdr|> Two constraints conflict; re-read the schema before answering. <|/out|>
@@ -660,10 +661,10 @@ must keep across turns belongs in an `assistant` message or a tool call.
 
 ### `assistant`
 
-The model's reply to the user. The payload may carry soft structure
-(section 2) that the interface renders, an HTML tag that loads an image for
-instance, so a new kind of reply needs a renderer change and nothing from
-the format.
+The model's reply to the user. The payload may carry tags (section 2)
+that the interface renders, an HTML tag that loads an image for instance,
+so a new form of reply needs a renderer change and nothing from the
+format.
 
 ```
 <|out|> assistant <|hdr|> Lisbon will be warmer than Porto today. <|/out|>
@@ -694,11 +695,9 @@ context instead of deriving it again. It persists like a reply (memory policy, s
 One call to one tool. A parallel batch is several consecutive `tool_call`
 messages in one burst, and since control returns to the harness at every
 message close (section 3), the first call can be executing while the model
-writes the next. The payload carries the tool's name and its arguments; the
-header carries the call's id and nothing else of the call. How the payload
-is serialized is the profile's decision, a JSON object with the name and
-the arguments being the common choice, and where a profile fixes such a
-grammar an engine can constrain decoding against it.
+writes the next. The payload is a JSON object with the tool's `name` and
+its `args`, and an engine can constrain decoding against that grammar; the
+header carries the call's id and nothing else of the call.
 
 ```
 <|out|> think <|hdr|> Compare the two cities; fetch both in parallel. <|/out|>
@@ -727,26 +726,24 @@ the harness echoes it on the matching `tool_result`, and the same string at
 both ends lets the model pair a result with its call by exact match instead
 of counting back through the sequence. The model writes ids as
 `TOOL_NAME:COUNTER`, with one counter for the whole conversation, so the
-next id is always the previous counter plus one.
+next id is always the previous counter plus one. The tool name inside the
+id is part of that convention, for readable and unique ids; the name the
+harness dispatches on is the one in the payload.
 
-The harness echoes an id verbatim under one rule: it must consist of 1 to
-64 characters from `[A-Za-z0-9_:.-]`, so that an echoed id can never
-introduce header syntax. The rule deliberately accepts more than the
-model's own convention, so that an id which entered through an API layer,
-a client replaying its own `call_abc123` for instance, passes through byte
-for byte and a replayed conversation stays token-identical for the prefix
-cache.
+An id is 1 to 64 characters from `[A-Za-z0-9_:.-]`. The rule accepts more
+than the model's own convention so that an id which entered through an
+API layer, a client replaying its own `call_abc123` for instance, passes
+through byte for byte and a replayed conversation stays token-identical
+for the prefix cache.
 
 A failing id is refused where it originates. An id supplied through an API
 layer that fails the rule, or that collides with the id of a call still
-open, is rejected with a request error before it reaches the token stream.
-A malformed or colliding id written by the model is a framing violation
-(section 3): the harness discards the call message and may resume the
-model with a notice so it can reissue the call.
+open, is rejected by the API layer before it reaches the token stream. A
+malformed or colliding id written by the model is treated as a framing
+violation (section 3): the harness discards the call message and may
+resume the model with a `harness` message so it can reissue the call.
 
-Every call receives exactly one `tool_result`, which closes it; a timeout
-or a crashed tool still closes the call, with a result whose payload
-describes the error. Delivery is incremental: a result that is ready
+Delivery is incremental: a result that is ready
 mid-burst is spliced in at the next message close, and when the model is
 waiting the harness resumes it as soon as at least one result is ready,
 delivering whatever has accumulated as consecutive `tool_result` messages
@@ -757,9 +754,9 @@ while the remaining calls stay open.
 The harness dispatches an output on its header alone, without parsing the
 payload. Two cases are distinct. An **unknown** type is a harness error:
 nothing is dispatched, and the harness may report it in-band as a
-`harness` notice at the next boundary ("output type 'quack' is not
+`harness` message at the next boundary ("output type 'quack' is not
 supported here") so the model can recover, or ignore the message. A
-**known but unconsumed** type, one this deployment deliberately does not
+**known but unconsumed** type, one the harness deliberately does not
 consume, a `verifiable_answer` outside of grading for instance, is inert:
 no error, no notice. In neither case is decoding interrupted; generation
 stops only at `<|wait|>` (section 3).
@@ -771,18 +768,12 @@ stops only at `<|wait|>` (section 3).
 The reference profile ranks its input types as follows (section 4 defines
 rank):
 
-| rank | source | what it can do |
-|------|--------|----------------|
-| 1 | `system`, the deployment's operator | sets the standing rules; nothing overrides it |
-| 2 | `harness`, the harness itself | steers the model within the rules; cannot override rank 1 |
-| 3 | `user`, the people in the conversation | the conversation itself |
-| 4 | `tool_result`, `retrieval`, `event`, `attachment` | data: material to work with, carrying no instruction authority |
-
-Content in a rank 4 message is never a command, whatever it claims. A type
-the deployment has not assigned a rank is rank 4. Rank is granted by the
-deployment and trained into the model; it is not read off a type's name.
-A profile may rank its types differently (section 2), and whatever ranking
-it chooses is the one its model was trained on.
+| rank | type | what it can do |
+|------|------|----------------|
+| 1 | `system` | sets the standing rules; nothing overrides it |
+| 2 | `harness` | steers the model within the rules |
+| 3 | `user` | the conversation itself |
+| none | `tool_result`, `retrieval`, `event`, `attachment` | data: material to work with, never followed as an instruction |
 
 ### Delivery order
 
@@ -795,11 +786,11 @@ this order:
 4. `attachment`
 5. `user`
 
-Frame first, then answers to pending calls, then pushed data, then the
-user's material, and the user's own words last, closest to the model's
-reply, so the human has the last word before the model speaks.
-Deployment-defined types are placed by the deployment; absent a stated
-choice they are delivered with the pushed data at position 3.
+The harness's own statement first, then answers to open calls, then pushed
+data, then the user's material, and the user's own words last, closest to
+the model's reply, so the human has the last word before the model speaks.
+A type beyond these (section 9) is delivered with the pushed data at
+position 3.
 
 ## 12. Memory policy
 
