@@ -116,7 +116,7 @@ Terms used throughout this document:
   content of exactly one source.
 - **Control token**: a token registered in the tokenizer as a single ID,
   for example `<|in|>`. Written `<|...|>` throughout this document, and
-  not to be confused with the `<...>` XML-style tags that appear inside
+  not to be confused with the `<...>` XML tags that appear inside
   payloads (`<identity>`, `<tools>`): those are ordinary text, `<`,
   `identity`, `>`, with no special status (section 2).
 - **Message**: the basic unit of the conversation: a header followed by a
@@ -131,8 +131,17 @@ Terms used throughout this document:
   conversation (section 2). On inputs the harness writes it; on outputs the
   model does.
 - **Payload**: the content region of a message.
-- **Harness notice**: an input message of type `harness` (section 9): the
-  harness speaking as itself.
+- **Type**: the class of a message, stated in its header (section 2): a
+  user message, a tool call, the system prompt. Input types are named for
+  where the content comes from, output types for what the message is; the
+  profile defines them (sections 9 and 10).
+- **Harness message**: an input message of type `harness` (section 9): the
+  harness speaking as itself, in its own words.
+- **Call**: an output that obliges exactly one input, its result, to
+  answer it (section 3). The reference profile's call is the tool call.
+- **Rank**: the standing the profile grants an input type among the
+  parties that may direct the model (section 4); a type without rank is
+  data.
 - **Generation burst**: one stretch of decoding, from the harness handing
   control to the model until the model emits `<|wait|>`, the control token
   with which it hands control back (or until it stops abnormally,
@@ -242,12 +251,12 @@ The payload is the content of the message, and it is the content of
 exactly one source. Content the harness received from different parties
 goes into separate messages, each in its own envelope; a quoted or
 embedded message is a message of its own. Nothing in a payload can open an
-envelope or alter the provenance its header states (rules 2 and 3,
-section 1).
+envelope or alter what its header states about where the content came
+from (rules 2 and 3, section 1).
 
 ### Structure inside a payload
 
-Inside a payload, XML-style tags such as `<identity>` or `<answer>` can
+Inside a payload, XML tags such as `<identity>` or `<answer>` can
 organize content. They are ordinary text (`<identity>` tokenizes as `<`,
 `identity`, `>`), and the format fixes no tag vocabulary; the reference
 profile's system prompt layout (section 13) is one example.
@@ -267,7 +276,7 @@ tool call, think, tool call, reply.
 
 After every message close, `<|/out|>` or `<|/in|>`, control returns briefly
 to the harness. If input is pending (a queued user message, a tool result,
-a `harness` notice), the harness appends it before the model continues,
+a `harness` message), the harness appends it before the model continues,
 several messages in the order the profile fixes (delivery order,
 section 11); otherwise the model continues uninterrupted. These returns
 do not end the burst. Since input can appear at any boundary, within a
@@ -279,7 +288,7 @@ point where its plan may need to change.
 `<|wait|>` means the model has nothing more to emit right now; the engine
 halts decoding there (rule 4, section 1). The next input the harness
 delivers resumes the model: a tool result, a `user` message, a `harness`
-notice, an `event`. An open call (below) does not change this: the model
+message, an `event`. An open call (below) does not change this: the model
 waits the same way whether or not an answer is still owed, and a reply
 ending in a question closes like one ending in a statement.
 
@@ -625,10 +634,10 @@ last word before the model speaks.
 
 ## 10. Output types
 
-An output message is the model addressing a recipient; the table says
-whom. The profile defines the receivers the model can address, one output
-type each; a canvas or the interface would be others. These are the
-reference profile's four.
+An output message is the model addressing a recipient. The profile
+defines which recipients the model can address, one output type for each;
+the reference profile has the four in the table below, and another
+profile might add a canvas or the interface as recipients of their own.
 
 | type | carries | addressed to |
 |------|---------|--------------|
@@ -653,15 +662,18 @@ must keep across turns belongs in an `assistant` message or a tool call,
 which persist.
 
 ```
-<|out|> think <|hdr|> Two constraints conflict; re-read the schema before answering. <|/out|>
+<|out|> think <|hdr|> The invoice is in dollars and the user wants euros. The attached sheet gives 0.92, so 1,250 USD is 1,150 EUR. <|/out|>
+
+<|out|> assistant <|hdr|> At the sheet's rate of 0.92, the 1,250 USD invoice comes to 1,150 EUR. <|/out|>
+<|wait|>
 ```
 
 ### `assistant`
 
-The model's reply to the user. The payload may carry tags (section 2)
-that the interface renders, an HTML tag that loads an image for instance,
-so a new form of reply needs a renderer change and nothing from the
-format.
+The model's reply to the user, as Markdown-formatted text by default. The
+payload may also carry tags (section 2) that the interface renders, an
+HTML tag that loads an image for instance, so a new form of reply needs a
+renderer change and nothing from the format.
 
 ```
 <|out|> assistant <|hdr|> Lisbon will be warmer than Porto today. <|/out|>
@@ -796,22 +808,20 @@ position 3.
 
 ## 12. Memory policy
 
-As a conversation grows, the harness may strip think messages from
-completed turns to reclaim context; every think message since the most
-recent `user` message stays visible, so the current turn keeps its working
-context however many messages it interleaves. Assistant messages, tool
-calls, tool results, and verifiable answers persist. Stripping removes
-only the think messages; a burst's `<|wait|>` remains, so a think-only
-burst collapses to a bare `<|wait|>`. Stripping invalidates the prefix
-cache from the first stripped token, which is the cost of reclaiming
-context. Like the rest of a harness's behavior, the policy is tuned to the
-model's profile.
+The reference profile lets the harness remove think messages from
+completed turns as a conversation grows (section 3). Every think message
+since the most recent `user` message stays, so the current turn keeps its
+working context however many messages it interleaves. Assistant messages,
+tool calls, tool results, and verifiable answers persist. Removal takes
+only the think messages; the burst's `<|wait|>` stays, so a think-only
+burst collapses to a bare `<|wait|>`. Removal invalidates the prefix cache
+from the first removed token, which is the cost of reclaiming context.
 
 ## 13. System prompt layout
 
 The system prompt is a `system` input message (section 9). This layout
-uses soft structure (section 2) to give fine-tuning and harnesses agreed
-places to look for the standing context.
+uses XML tags (section 2) to give fine-tuning and harnesses agreed places
+to look for the standing context.
 
 ```
 <|in|> system <|hdr|>
@@ -824,10 +834,7 @@ places to look for the standing context.
 </behavior>
 
 <effort>
-  {low | medium | high}: how much to think and how autonomously to act.
-  low: minimal or no think messages, direct answers, ask before long tool
-  chains. high: deliberate freely, chain tools without check-ins.
-  Written as readable text so the model can also explain its own mode.
+  {low | medium | high}
 </effort>
 
 <tools>
@@ -838,8 +845,7 @@ places to look for the standing context.
 </tools>
 
 <environment>
-  {platform, user settings, enabled features; changes most often, so it
-   comes last for the prefix cache}
+  {platform, user settings, enabled features}
 </environment>
 <|/in|>
 ```
@@ -853,9 +859,12 @@ places to look for the standing context.
 | `<environment>` | platform, user settings, enabled features; changes most often, so it comes last |
 
 The effort tag is here because the operating mode is something the model
-should be told. For the levels to mean anything, each one has to be a
-training target with effort-matched traces; a level the model was not
-trained on does not work.
+should be told: low means minimal or no think messages, direct answers,
+and asking before long tool chains; high means deliberating freely and
+chaining tools without check-ins; medium sits between. The levels are
+written as words so the model can also explain its own mode. For them to
+mean anything, each has to be a training target with effort-matched
+traces; a level the model was not trained on does not work.
 
 ## 14. Pretraining conventions
 
@@ -869,10 +878,25 @@ absent from serving. An annotation, where the recipe produces one, is a
 <|out|> think <|hdr|> ANNOTATION_TEXT <|/out|>
 ```
 
+### Sequences
+
+Bulk pretraining sequences carry no system prompt. A document and its
+annotation share a sequence. A document is split only when it exceeds the
+sequence length, and the parts carry no continuation markers: two parts
+of the same document never share a context, so a marker would be metadata
+the model cannot use, and the model has to handle partial documents in
+any case, since retrieval delivers chunks of documents by construction.
+
+### Annotation loss
+
+Whether annotation tokens receive loss is the recipe's choice: masked, the
+annotation is conditioning context; unmasked, it also trains the model's
+own register for assessing what it reads.
+
 ### Raw text
 
 The same framing defines how raw text is scored or continued outside a
 conversation, for raw completions or loglikelihood evaluation: wrap the
 text as a document message, `<|in|> document <|hdr|> TEXT`, and score or
-continue the payload. A tokenizer helper provides this framing; bare text
-with no framing is out of distribution.
+continue the payload. The reference library (section 1) provides this
+framing; bare text with no framing is out of distribution.
