@@ -533,21 +533,17 @@ instructions hold over everything else in the conversation.
 
 ### `harness`
 
-The harness speaking as itself, in its own words. It is the way to give
-the model information that does not come from the user or from another
-system: a compaction has happened, a tool call the harness failed to
-complete (section 10), an output type the harness does not know
-(section 10), the current time when the user returns
-after a long pause, the user interrupted, a timer the harness runs has
-fired, or anything an application injects through a hook of its own. How
-the harness comes by what it says is out of scope. It sends a `harness`
-message when there is something to say; the type does not accompany every
-user turn, and it does not restate what the system prompt says, since the
-standing context lives there and the harness changes it by editing the
-prompt in place. What the harness knows about content it received from
-another system goes in that content's header (section 2); the content
-itself arrives as `retrieval` or `tool_result`. Rank 2
-(section 11): the model acts on it, within what the system prompt allows.
+The harness speaking as itself. Every word of the payload is the
+harness's own: a fact it observed or a decision it took. Examples: a
+compaction has happened, a tool call it failed to complete (section 10),
+an output type it does not know (section 10), the current time when the
+user returns after a long pause, the user interrupted, a timer it runs
+has fired. Content the harness received from another party is delivered
+under that party's type, with what the harness knows about it in the
+header (section 2). The harness sends a `harness` message when it has
+something to say. It has rank 2 (section 11): the model follows a
+`harness` message as it follows an instruction from the system prompt,
+and where the two conflict, the system prompt wins.
 
 ```
 <|in|> harness <|hdr|> The user has been away for three hours. Current time: 2026-07-19 17:32. <|/in|>
