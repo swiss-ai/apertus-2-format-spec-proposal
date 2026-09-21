@@ -393,7 +393,7 @@ profile defines:
 4. **Call types and counters**: which outputs are calls, which inputs
    their results, and the header fields that pair a result with its call.
 5. **Payload conventions**: the serialization of payloads where a type
-   needs one, such as a tool call's name and arguments.
+   needs one, such as a tool call's arguments.
 6. **Additional control tokens**: only where the seven cannot do the job,
    subject to rules 1 to 4 (section 1). Media placeholders are the usual
    case: a control token the harness's media processor inserts into a
@@ -441,7 +441,7 @@ show the overall shape.
 
 <|out|> think <|hdr|> Need today's weather before advising. Call the tool. <|/out|>
 
-<|out|> tool_call {"name":"get_weather","counter":0} <|hdr|> {"name":"get_weather","args":{"city":"Lisbon"}} <|/out|>
+<|out|> tool_call {"name":"get_weather","counter":0} <|hdr|> {"city":"Lisbon"} <|/out|>
 <|wait|>
 
 <|in|> user <|hdr|> oh also, I'll be walking a lot, not taking taxis <|/in|>
@@ -650,7 +650,7 @@ profile might add a canvas or the interface as recipients of their own.
 | `think` | the model's reasoning | the harness, which shows or hides it |
 | `assistant` | the reply | the user |
 | `verifiable_answer` | the task's answer in extractable form | the harness, as a grading channel |
-| `tool_call` | a call to one tool: its name and arguments | the tool runtime |
+| `tool_call` | a call to one tool: its arguments | the tool runtime |
 
 ### Which outputs are calls
 
@@ -710,18 +710,18 @@ context instead of deriving it again. It persists like a reply (memory policy, s
 One call to one tool. A parallel batch is several consecutive `tool_call`
 messages in one burst, and since control returns to the harness at every
 message close (section 3), the first call can be executing while the model
-writes the next. The payload is a JSON object with the tool's `name` and
-its `args`, and an engine can constrain decoding against that grammar; the
-header carries the tool's `name` and the call's `counter`, nothing else.
+writes the next. The header carries the tool's `name` and the call's
+`counter`; the payload is the call's arguments as one JSON object, and an
+engine can constrain decoding against the tool's schema.
 
 ```
 <|out|> think <|hdr|> Need tomorrow's weather and calendar; fetch both. <|/out|>
 
-<|out|> tool_call {"name":"get_weather","counter":4} <|hdr|> {"name":"get_weather","args":{"city":"Lisbon","day":"tomorrow"}} <|/out|>
+<|out|> tool_call {"name":"get_weather","counter":4} <|hdr|> {"city":"Lisbon","day":"tomorrow"} <|/out|>
 
 <|in|> user <|hdr|> and I'd rather not be outside after 6pm <|/in|>
 
-<|out|> tool_call {"name":"get_calendar","counter":5} <|hdr|> {"name":"get_calendar","args":{"day":"tomorrow"}} <|/out|>
+<|out|> tool_call {"name":"get_calendar","counter":5} <|hdr|> {"day":"tomorrow"} <|/out|>
 <|wait|>
 
 <|in|> tool_result {"name":"get_weather","counter":4} <|hdr|> {"tempC":24,"cond":"sunny"} <|/in|>
@@ -750,9 +750,8 @@ each further call is the previous one plus one.
 
 Name and counter are two fields rather than one string like
 `get_weather:4`, because a joined string cannot allow a colon in a tool
-name, and a second field costs almost no tokens. The name in the header
-is the same string as in the payload; the harness dispatches on the
-payload.
+name, and a second field costs almost no tokens. The harness dispatches
+on the name in the header.
 
 An API layer that uses call ids of its own keeps the mapping between its
 ids and the counters outside the token stream, so a replayed conversation
