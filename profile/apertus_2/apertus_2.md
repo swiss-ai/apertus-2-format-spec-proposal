@@ -1,49 +1,46 @@
 # Apertus 2 Profile (Draft)
 
-The Apertus 2 profile builds on the [Apertus Interaction Format](../../spec.md#part-i-the-format)
-to support advanced user and model interaction and agentic workflows. Conversations
-are message-based rather than fixed user/reply turns: new user input, tool
-results, and harness notices can arrive between model messages, while tool
-calls remain pending across generation bursts. See the format's
-[generation rules](../../spec.md#3-generation) for message boundaries, waiting,
-and call handling.
+The Apertus 2 profile defines the message types, headers, payloads, trust
+ranks, and interaction rules that Apertus 2 learns and its harness implements.
+It supports conversational and agentic workloads, with system-prompt settings
+that configure trained behaviour.
 
-A profile defines the model-specific message types, headers, payloads, trust
-ranks, and interaction rules that the model learns and its harness implements.
-This profile draws on the [reference profile](../../spec.md#part-ii-the-reference-profile)
-and keeps the shared envelope extensible: future profiles can add types, such
-as status messages, without changing the basic message structure. New types
-need defined semantics, harness support, and appropriate model training. See
-[message structure](../../spec.md#2-message-structure) and
-[what a profile defines](../../spec.md#6-what-a-profile-defines).
+## Context
 
-Explicit sources and reserved message boundaries give the model a structural
-basis for learning trust and safety: it can distinguish authorised instructions
-from unranked document and tool content, including injected commands. This
-requires explicit training in source attribution and instruction authority;
-the format alone does not ensure safe behaviour. See
-[control-token protection](../../spec.md#why-control-tokens-cannot-be-forged),
-the format's [trust model](../../spec.md#4-trust), and this profile's
-[Trust Ranks](#trust-ranks) for the hierarchy and training requirements.
+This profile assumes familiarity with the [Apertus Interaction Format
+(Part I)](../../spec.md#part-i-the-format) and its [reference profile
+(Part II)](../../spec.md#part-ii-the-reference-profile). It specifies Apertus 2's
+choices directly. The format defines envelope structure, forgery protection,
+and burst mechanics; brief reminders and links appear here where they help
+explain a profile requirement.
 
-Model behaviour is largely decoupled from message format, but these conventions
-can shape it. System-prompt settings such as thinking levels connect the message
-representation to trained behaviour, as described in
-[Model Behaviour and System Prompt](#model-behaviour-and-system-prompt).
+Training-data pipelines and serving harnesses are expected to use the
+[reference library described by the format](../../spec.md#what-the-engine-must-do)
+to assemble, format, and parse messages. Using it allows the profile to prescribe
+consistent formatting where needed, such as the
+[compact JavaScript Object Notation (JSON) system-prompt layout](#system-prompt-content-and-layout).
+
+Training and serving use the same library-controlled representation. The model
+therefore does not need training on alternative layouts where the library
+standardises them, such as indented versus compact system-prompt JSON.
+Training still covers varied instruction content, tool inventories, and
+message-delivery patterns, and teaches adherence to the configured behaviour
+and [trust ranks](#trust-ranks).
 
 ## Change Log
 
-| Date       | Change introduced                                                                         |
-| ---------- | ----------------------------------------------------------------------------------------- |
-| 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                           |
+| Date       | Change introduced                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------- |
+| 2026-09-28 | Simplify profile context, separate document provenance and citation IDs, and clarify JSON formatting. |
+| 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                                       |
 
 ## Table of Contents
 
+- [Context](#context)
 - [Change Log](#change-log)
 - [How to Read This Profile](#how-to-read-this-profile)
-- [General Message Layout](#general-message-layout)
-  - [Header Layout](#header-layout)
-  - [Type Names](#type-names)
+- [Header Layout](#header-layout)
+- [Type Names](#type-names)
 - [Input Messages](#input-messages)
   - [system](#system)
   - [host](#host)
@@ -85,63 +82,34 @@ For further questions, ambiguities, or clarification requests,
 [open a GitHub issue](https://github.com/swiss-ai/apertus-2-format-spec-proposal/issues/new/choose)
 and reference the relevant section and example.
 
-## General Message Layout
+## Header Layout
 
-The [Apertus Interaction Format](../../spec.md#part-i-the-format) makes each
-message's source and boundaries explicit, so supplied content cannot forge
-another party's message envelope. It separates instruction authority from
-ordinary data and supports interleaved user, model, and tool messages.
-Each message carries content from one source; the harness writes input
-envelopes, and the model generates output envelopes.
+An Apertus 2 header is a type word immediately followed by one compact
+JSON object when additional fields exist.
+Input types identify the content's role; output types identify its purpose.
 
-All messages use the [shared envelope](../../spec.md#2-message-structure):
-
-```text
-<|in|>HEADER<|hdr|> PAYLOAD <|/in|>
-<|out|>HEADER<|hdr|> PAYLOAD <|/out|>
-```
-
-<p style="border: 1px solid #B8860B; border-left: 4px solid #B8860B; background-color: #FFF4CC; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>⚠ WARNING:</strong> No whitespace is allowed in message headers; spacing after <code style="color: inherit; background-color: transparent;">&lt;|hdr|&gt;</code> belongs to the payload.</p>
-
-`HEADER` and `PAYLOAD` are placeholders, not literal text.
-
-The [control tokens](../../spec.md#1-control-tokens) delimit messages and
-separate headers from payloads. Each is a reserved token ID that ordinary
-text cannot forge. `<|wait|>` ends a generation burst; `<|pad|>` supplies
-padding between messages. The header identifies the message type and any
-type-specific fields; the payload carries its content. The chapters below
-define Apertus 2's input and output types, with their headers and payloads.
-
-### Header Layout
-
-The header follows the [reference profile's type-and-JSON layout](../../spec.md#8-header-layout),
-using the fields below and compact JavaScript Object Notation (JSON) serialisation: a type word immediately
-followed by one JSON object when additional fields exist. Input types identify
-the content's role; output types identify its purpose. The type word and JSON
-are ordinary text; `<|hdr|>` marks the end of the header.
-
-**Headers contain no literal whitespace.** The type directly follows
-`<|in|>` or `<|out|>`, the optional `{...}` directly follows the type, and
-`<|hdr|>` directly follows the type or closing `}`. JSON is compact, with
-no spaces around punctuation. Whitespace within a JSON string value must
-be escaped (for example, `\u0020` for a space), preserving the decoded value.
-This rule applies only to headers; payloads retain their own formatting.
+**Headers contain no whitespace.** The type directly follows `<|in|>` or
+`<|out|>`, the optional `{...}` directly follows the type, and `<|hdr|>`
+directly follows the type or closing `}`. JSON string values in headers
+must also contain no whitespace, including escaped whitespace. Payloads
+follow their own formatting rules.
 
 The additional fields are:
 
-| Field     | Message types    | Meaning                                                                                                |
-| --------- | ---------------- | ------------------------------------------------------------------------------------------------------ |
-| `name`    | `call`, `result` | Tool name; the harness dispatches on this field.                                                       |
-| `counter` | `call`, `result` | Conversation-wide integer generated by the model and echoed on the result.                             |
-| `source`  | `document`       | `user` for attachments; a conversation-unique harness reference for retrieval; omitted in pretraining. |
+| Field     | Message types    | Meaning                                                                                                         |
+| --------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `name`    | `call`, `result` | Tool name; the harness dispatches on this field.                                                                |
+| `counter` | `call`, `result` | Conversation-wide integer generated by the model and echoed on the result.                                      |
+| `from`    | `document`       | Supplying party: `user` for attachments or the retrieval system; required outside pretraining.                  |
+| `id`      | `document`       | Harness-assigned citation reference, unique across documents in the conversation; required outside pretraining. |
 
 Header examples use `...` as a payload placeholder. Examples starting at a
 non-zero counter continue a conversation with earlier calls omitted.
 
 ```text
 <|in|>user<|hdr|> ... <|/in|>
-<|in|>document{"source":"user"}<|hdr|> ... <|/in|>
-<|in|>document{"source":"r3"}<|hdr|> ... <|/in|>
+<|in|>document{"from":"user","id":"a1"}<|hdr|> ... <|/in|>
+<|in|>document{"from":"internal-docs","id":"r3"}<|hdr|> ... <|/in|>
 <|in|>document<|hdr|> ... <|/in|>
 <|out|>call{"name":"get_weather","counter":4}<|hdr|> ... <|/out|>
 <|in|>result{"name":"get_weather","counter":4}<|hdr|> ... <|/in|>
@@ -151,35 +119,28 @@ The harness writes input headers; the model writes output headers, which
 the harness parses to route the message. Type-specific field requirements
 and payload definitions belong in the message-type sections below.
 
-### Type Names
+## Type Names
 
 Every message-type name is **one token in the
 [Apertus 2 tokeniser](https://github.com/swiss-ai/apertus-omni-tokenizer)**
 in its header position: directly after `<|in|>` or `<|out|>`, with no
-whitespace, and whether or not a JSON object follows. Names with an
-underscore never qualify, since the tokeniser splits on `_`. The table
-gives each name, the reference-profile name it replaces, and that name's
-token count in the same position. `document` merges three reference types
-into one, so no single old token count applies; the reference profile's
-`event` type has no counterpart and is dropped.
+whitespace, and whether or not a JSON object follows. The names minimise
+header token overhead. The harness's own messages use `host`, so "harness
+message" and "host message" refer to the same type.
 
-The harness is the software that serves the model, as defined in the
-format's [terminology](../../spec.md#terminology). Its own messages use
-`host`, so "harness message" and "host message" refer to the same type.
+| Type       | Purpose                                       |
+| ---------- | --------------------------------------------- |
+| `system`   | Standing context                              |
+| `host`     | The harness speaking as itself                |
+| `result`   | Tool output closing a `call`                  |
+| `user`     | The user's own message                        |
+| `document` | Attachment, retrieved snippet, or corpus text |
+| `think`    | The model's reasoning                         |
+| `reply`    | The model's message to the user               |
+| `claim`    | The committed answer for a verifier           |
+| `call`     | A call to one tool                            |
 
-| Apertus 2 type | Reference profile                     | Old tokens | Purpose                                       |
-| -------------- | ------------------------------------- | ---------: | --------------------------------------------- |
-| `system`       | `system`                              |          1 | Standing context                              |
-| `host`         | `harness`                             |          3 | The harness speaking as itself                |
-| `result`       | `tool_result`                         |          3 | Tool output closing a `call`                  |
-| `user`         | `user`                                |          1 | The user's own message                        |
-| `document`     | `attachment`, `retrieval`, `document` |        n/a | Attachment, retrieved snippet, or corpus text |
-| `think`        | `think`                               |          1 | The model's reasoning                         |
-| `reply`        | `assistant`                           |          2 | The model's message to the user               |
-| `claim`        | `verifiable_answer`                   |          4 | The committed answer for a verifier           |
-| `call`         | `tool_call`                           |          3 | A call to one tool                            |
-
-The header fields `name`, `counter`, and `source` are one token each.
+The tool header fields `name` and `counter` are one token each.
 `harness-error` and `tool-error` in [Call outcomes](#call-outcomes) are
 prose categories, not header text.
 
@@ -195,8 +156,9 @@ source.
 The system message provides the standing context against
 which all other messages are read. It is the most trusted message
 ([rank 1](#trust-ranks)), opens the conversation, and persists throughout it.
-Apertus 2 restricts its payload to one JSON object. There is exactly one
-system message: the harness updates it in place rather than appending another.
+Its payload uses the [compact JSON layout](#system-prompt-content-and-layout).
+There is exactly one system message: the harness updates it in place rather
+than appending another.
 
 ```text
 <|in|>system<|hdr|>
@@ -211,9 +173,13 @@ system message: the harness updates it in place rather than appending another.
       "schema": {
         "type": "object",
         "properties": {
-          "city": {"type": "string"}
+          "city": {
+            "type": "string"
+          }
         },
-        "required": ["city"],
+        "required": [
+          "city"
+        ],
         "additionalProperties": false
       },
       "policy": "Call for current conditions. One city per call."
@@ -224,13 +190,13 @@ system message: the harness updates it in place rather than appending another.
 <|/in|>
 ```
 
+<p style="border: 1px solid #7BBBD5; border-left: 4px solid #7BBBD5; background-color: #BFD8E1; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>ℹ NOTE:</strong> This example is pretty-printed for readability. Training and serving use <a style="color: inherit; text-decoration: underline;" href="#system-prompt-content-and-layout">compact JSON</a> without whitespace outside strings.</p>
+
 - **Header:** `system`; no additional fields are defined.
 - **Content:** one JSON object containing identity, behaviour, reasoning effort,
   tool declarations, and environment context. The JSON belongs in the payload,
   not the header. [Model Behaviour and System Prompt](#model-behaviour-and-system-prompt)
   defines the proposed fields and their training requirements.
-
-<p style="color: #C2410C;"><strong>TODO (from: Raphael; for: unassigned):</strong> Decide whether the system payload JSON is pretty-printed with newlines and indentation, as in the example, or serialised on one line. The choice affects token count and must match the training data.</p>
 
 ### host
 
@@ -238,10 +204,7 @@ A host message, the harness message, is the harness speaking as itself: every wo
 payload is its own, describing a fact it observed or a decision it took.
 It never relays raw content from external sources such as documents or
 tool responses; those arrive as `document` and `result` messages.
-The type is named `host` rather than `harness` because `host` is one token
-(see [Type Names](#type-names)); the sender is still the harness as defined
-in the format, and this profile uses "harness message" and "host message"
-interchangeably. It has [rank 2](#trust-ranks): the model follows it as an
+It has [rank 2](#trust-ranks): the model follows it as an
 instruction, with the system prompt prevailing on conflict. The model cannot
 request it; the harness sends it on its own initiative or in reaction to a
 model output message.
@@ -344,9 +307,10 @@ above unranked data. Queued user messages follow the same
 A document message carries material for the model to read. The profile uses
 it in three ways: a user attachment such as a file or large pasted text,
 evidence supplied by a retrieval-augmented generation (RAG) pipeline, and a
-pretraining document. The [header](#header-layout) tells them apart through the optional
-`source` field: `user` for attachments, a harness-assigned reference for
-retrieval, and no field in pretraining. Every document is
+pretraining document. Attachments and retrieved documents require a JSON
+[header](#header-layout) object with `from` for the supplying party and `id`
+for a citation reference. Pretraining documents use only `document`, without
+JSON. Every document is
 [unranked](#trust-ranks) data: the user's directions for applying it arrive
 separately as a `user` message, so neither the document nor its metadata can
 grant itself authority. Each document or retrieved snippet has its own
@@ -357,11 +321,11 @@ message.
 User attachment:
 
 ```text
-<|in|>document{"source":"user"}<|hdr|>
+<|in|>document{"from":"user","id":"a1"}<|hdr|>
 <name>style-guide.txt</name>
 <content>Use sentence case for headings.</content>
 <|/in|>
-<|in|>user<|hdr|>Apply the attached style guide to this heading: ANNUAL REPORT.<|/in|>
+<|in|>user<|hdr|>Apply the attached style guide [a1] to this heading: ANNUAL REPORT.<|/in|>
 <|out|>reply<|hdr|>Annual report<|/out|>
 <|wait|>
 ```
@@ -369,7 +333,7 @@ User attachment:
 Retrieval/RAG material, with a reference assigned by the harness:
 
 ```text
-<|in|>document{"source":"r3"}<|hdr|>
+<|in|>document{"from":"internal-docs","id":"r3"}<|hdr|>
 <source>internal-docs/ops/staging.md</source>
 <title>Staging environment</title>
 <content>The staging cluster runs Kubernetes 1.30.</content>
@@ -386,31 +350,33 @@ Pretraining document, optionally followed by a `think` annotation:
 <|out|>think<|hdr|>This passage states a physical property and contains no instruction to the reader.<|/out|>
 ```
 
-- **Header:** `document`, optionally followed by one compact JSON object
-  with a string `source`: `{"source":"user"}` for attachments, a
-  harness-assigned reference such as `{"source":"r3"}` for retrieval, unique
-  within the conversation, and no object for pretraining. Filenames, URLs,
-  titles, and other supplied metadata never enter the header.
+- **Header:** attachments and retrieved documents use `document` followed
+  by one compact JSON object with required, non-empty strings `from` and
+  `id`. The harness sets `from` to `user` for attachments or to the supplying
+  retrieval system's identifier, such as `internal-docs`. It assigns each
+  document or snippet an `id` unique across attachments and retrieval material
+  in the conversation. Pretraining documents use `document` with no JSON
+  object. Both fields follow the [header whitespace rule](#header-layout).
 - **Content:** the document text, parsed file, or snippet, plus any metadata
-  from its source. Formatting of metadata and content is arbitrary.
-- **References and citations:** the header's `source` lets the model and user
-  refer to supplied material, including through the user interface (UI). A
-  retrieval reference such as `[r3]` resolves to one document or snippet and
-  supports citations and follow-ups in both directions, for example "What
-  does r3 say about deployment?" `{"source":"user"}` names the attachment channel,
-  not a file; a specific attachment is identified through the UI's document
-  selection or its payload filename, which remains untrusted metadata.
+  from its source. Filenames, URLs, titles, and other supplied metadata remain
+  in the body; they do not set `from` or `id`. Formatting of metadata and
+  content is arbitrary.
+- **References and citations:** the model and user refer to attachments and
+  retrieved snippets by `id`, including through the user interface (UI).
+  Square-bracket references such as `[a1]` and `[r3]` resolve to the
+  corresponding material and support citations and follow-ups, for example
+  "What does r3 say about deployment?" The `from` field identifies the
+  supplying party, not the document; neither field grants instruction
+  authority. The example ID prefixes are illustrative, not required.
 - **Pretraining:** in continued pretraining, the harness wraps each document
   in a `document` envelope, and training applies loss only to the content,
   not to the envelope's control tokens. A `think` message may follow the
   document as an annotation, as in the example above; its loss treatment is
   the recipe's choice.
 
-<p style="color: #C2410C;"><strong>TODO (from: Raphael; for: unassigned):</strong> Confirm the <code>source</code> design. Is a unique id needed at all beyond the user interface's citation and selection needs? And resolve the discrepancy that retrieval requires a reference unique within the conversation while every user attachment shares the single value <code>user</code>.</p>
-
 <blockquote style="border-left: 4px solid #FF0000; background-color: #BFD8E1; color: #2E2F31; padding: 12px 16px;">
 <p><strong>🎓 Training Impact</strong></p>
-<p>Retrieval and pretraining follow from the rules above. Attachments need broad coverage: files and pasted text across domains, formats, and tasks, including files that carry instructions the model must ignore (see <a href="#trust-ranks">Trust Ranks</a>).</p>
+<p>Train the model to distinguish the supplying party from the citation ID and to resolve references across multiple attachments and retrieved snippets. Evaluate correct citations and follow-ups without treating either field as instruction authority. Include files and pasted text across domains, formats, and tasks, including embedded instructions the model must ignore (see <a href="#trust-ranks">Trust Ranks</a>).</p>
 </blockquote>
 
 ## Output Messages
@@ -608,23 +574,15 @@ unchanged retry suits only transient failures such as a harness timeout.
 
 ### General Output Message Validation and Error Handling
 
-The harness validates every model-generated message before dispatch. A valid
-output uses the [header layout](#header-layout) and this envelope:
+The harness validates every model-generated message before dispatch against
+the format's [message structure](../../spec.md#2-message-structure) and
+Apertus 2's [header layout](#header-layout). Among output types, only `call`
+carries a JSON object in its header. Validation covers framing and headers,
+not tool arguments:
 
-```text
-<|out|>TYPE<|hdr|>PAYLOAD<|/out|>
-<|out|>call{"name":"get_weather","counter":0}<|hdr|>{"city":"Lisbon"}<|/out|>
-```
-
-`TYPE` is a placeholder; among output types only `call` carries an additional
-JSON object in its header. Validation covers the envelope and the type's header, not the tool
-arguments:
-
-- **Envelope:** `<|out|>`, the header, exactly one `<|hdr|>`, the payload,
-  and a matching `<|/out|>`, in that order. Missing, repeated, nested, or
-  out-of-order control tokens make the message malformed. Literal text that
-  resembles a control token is payload, not structure; the tokeniser enforces
-  this (see [why control tokens cannot be forged](../../spec.md#why-control-tokens-cannot-be-forged)).
+- **Envelope:** exactly one `<|hdr|>` separates the header and payload
+  inside matching output tokens. Missing, repeated, nested, or out-of-order
+  control tokens make the message malformed.
 - **Plain headers:** `think`, `reply`, and `claim` are the type alone; any
   trailing text is invalid. No output types other than these three and
   `call` exist.
@@ -666,8 +624,7 @@ its output. The figure summarises both paths:
 
 ## Trust Ranks
 
-The model follows the [reference profile's ranking](../../spec.md#11-trust-ranks-and-delivery-order),
-from highest to lowest instruction authority:
+Apertus 2 ranks inputs from highest to lowest instruction authority:
 
 1. **`system`**: sets the standing rules; no other message overrides it.
 2. **`host`**: steers the model within the system rules.
@@ -690,18 +647,12 @@ the harness, not claims in the payload or [delivery order](#queued-inputs-and-de
 
 ## Bursts and Delivery Order
 
-A **generation burst** starts when the harness hands control to the model
-and, in normal operation, ends only when the model emits `<|wait|>`. **Inputs
-can be delivered after every complete message without ending the burst,
-giving the same format flexibility across workloads and [delivery patterns](#queued-inputs-and-delivery-order).** After
-`<|wait|>`, the task may be finished or awaiting tool results or
-instructions; the next delivered input starts a new burst. See the format's
-[generation rules](../../spec.md#3-generation); abnormal stops follow
-[General Output Message Validation and Error Handling](#general-output-message-validation-and-error-handling).
-
-Bursts and [interleaved delivery](../../spec.md#message-boundaries) support
-flexible workflows: the model works in diverse agentic environments and still
-supports standard turn-based interaction. A few examples:
+Apertus 2 uses [arrival-order delivery](#queued-inputs-and-delivery-order)
+for queued inputs. **Inputs can be delivered after every complete message
+without ending the burst, giving the same format flexibility across workloads
+and delivery patterns.** The format defines the full
+[generation mechanics](../../spec.md#3-generation); Apertus 2 training covers
+both standard turn-based interaction and interleaved agentic workflows:
 
 - **User steering:** users can update an ongoing task without waiting for
   the next `reply`.
@@ -721,18 +672,16 @@ supports standard turn-based interaction. A few examples:
 
 After the standing system prompt, there is **no fixed order by message type**.
 Queued inputs use **first-in, first-out (FIFO)** delivery, which neither
-depends on nor changes [trust rank](#trust-ranks). This contrasts with the
-reference profile's [type-based delivery order](../../spec.md#delivery-order),
-including its user-last rule.
+depends on nor changes [trust rank](#trust-ranks).
 
 - The harness queues messages as they become available, which depends on
   the use case and environment.
 - After each message close (`<|/out|>` or `<|/in|>`), the harness inserts
   the queued inputs in that order, never inside a message. If the queue is
   empty, generation continues without waiting.
-- After `<|wait|>`, pending inputs resume the model immediately; otherwise
-  the harness waits for new input. A pending tool call alone does not resume
-  it.
+- `<|wait|>` ends the burst. Pending inputs resume the model immediately;
+  otherwise the harness waits for new input. A pending tool call alone does
+  not resume it.
 
 <p style="border: 1px solid #7BBBD5; border-left: 4px solid #7BBBD5; background-color: #BFD8E1; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>ℹ NOTE:</strong> How long messages remain queued and when they enter the context depend on harness scheduling and available message boundaries, subject to the FIFO rules above.</p>
 
@@ -761,9 +710,13 @@ intended behaviour and training targets.
 
 ### System Prompt Content and Layout
 
-The [system message example](#system) illustrates the proposed layout.
-Natural-language instructions remain JSON string values; no prose surrounds
-the object. The literal key `behavior` retains its existing spelling.
+The `system` payload is one compact JSON object with no surrounding prose
+and no whitespace outside strings, including indentation and line breaks.
+Training-data pipelines and serving harnesses serialise it in this same layout. Spaces within string values remain intact; newlines within
+instructions use JSON escapes such as `\n`. This formatting rule does not
+fix key order or change the proposed fields below. The literal key `behavior`
+retains its existing spelling. See the [system message example](#system)
+for the complete message.
 
 <p style="color: #C2410C;"><strong>TODO (from: Raphael; for: unassigned):</strong> Optimise the system-prompt JSON keys to encode as one token where possible. Verify this with the Apertus 2 tokeniser in the actual serialised context, while preserving clear meanings. The message-type names are already chosen this way; see <a href="#type-names">Type Names</a>.</p>
 
@@ -787,11 +740,12 @@ the object. The literal key `behavior` retains its existing spelling.
 }
 ```
 
-The example show only the JSON payload. See the [system input message](#system)
-for the full `<|in|>system<|hdr|>…<|/in|>` envelope and the open decision on
-serialisation. Indentation here aids readability; it does not settle that
-decision. Omitting `effort` selects `medium` in the current draft. Tool fields
-follow [Tool Declarations](#tool-declarations).
+<p style="border: 1px solid #7BBBD5; border-left: 4px solid #7BBBD5; background-color: #BFD8E1; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>ℹ NOTE:</strong> This example is pretty-printed for readability. Training and serving use <a style="color: inherit; text-decoration: underline;" href="#system-prompt-content-and-layout">compact JSON</a> without whitespace outside strings.</p>
+
+The example shows only the JSON payload; the
+[system input message](#system) includes the envelope. Omitting `effort`
+selects `medium` in the current draft. Tool fields follow
+[Tool Declarations](#tool-declarations).
 
 ### Thinking and Effort
 
@@ -842,7 +796,9 @@ in training.
             "description": "File path relative to the workspace root."
           }
         },
-        "required": ["path"],
+        "required": [
+          "path"
+        ],
         "additionalProperties": false
       },
       "policy": "Use to inspect files relevant to the user's task."
@@ -851,6 +807,8 @@ in training.
   "environment": "A source-code workspace with read-only file access."
 }
 ```
+
+<p style="border: 1px solid #7BBBD5; border-left: 4px solid #7BBBD5; background-color: #BFD8E1; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>ℹ NOTE:</strong> This example is pretty-printed for readability. Training and serving use <a style="color: inherit; text-decoration: underline;" href="#system-prompt-content-and-layout">compact JSON</a> without whitespace outside strings.</p>
 
 The schema is a [JSON Schema object](https://json-schema.org/understanding-json-schema/reference/object)
 describing the arguments, with `type: "object"`, argument definitions in
