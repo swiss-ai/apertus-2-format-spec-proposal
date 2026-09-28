@@ -29,10 +29,10 @@ and [trust ranks](#trust-ranks).
 
 ## Change Log
 
-| Date       | Change introduced                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------------- |
-| 2026-09-28 | Simplify profile context, separate document provenance and citation IDs, and clarify JSON formatting. |
-| 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                                       |
+| Date       | Change introduced                                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-28 | Simplify profile context, separate document provenance and citation IDs, and resolve system-prompt formatting, thinking settings, and tool-schema requirements. |
+| 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                                                                                                 |
 
 ## Table of Contents
 
@@ -164,7 +164,7 @@ than appending another.
 <|in|>system<|hdr|>
 {
   "identity": "You are Apertus 2, an AI assistant.",
-  "effort": "medium",
+  "thinking": "medium",
   "behavior": "Answer clearly and concisely in Markdown.",
   "tools": [
     {
@@ -694,9 +694,7 @@ the system prompt; thinking is optional.
 
 ## Model Behaviour and System Prompt
 
-<p style="border: 1px solid #B8860B; border-left: 4px solid #B8860B; background-color: #FFF4CC; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>⚠ WARNING:</strong> The system-prompt content is provisional and not yet finalised. Thinking effort in particular needs further discussion; the levels and default below describe the current draft.</p>
-
-<p style="color: #C2410C;"><strong>OPEN QUESTION (from: unknown; for: unassigned):</strong> Which thinking-effort levels and which default does the final profile define?</p>
+<p style="border: 1px solid #B8860B; border-left: 4px solid #B8860B; background-color: #FFF4CC; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>⚠ WARNING:</strong> This profile remains a development draft; the system-prompt rules below define its current requirements.</p>
 
 Apertus 2 restricts the system prompt to **one JSON object** in the
 `system` payload. Its fields configure trained behaviour under the
@@ -718,12 +716,16 @@ fix key order or change the proposed fields below. The literal key `behavior`
 retains its existing spelling. See the [system message example](#system)
 for the complete message.
 
-<p style="color: #C2410C;"><strong>TODO (from: Raphael; for: unassigned):</strong> Optimise the system-prompt JSON keys to encode as one token where possible. Verify this with the Apertus 2 tokeniser in the actual serialised context, while preserving clear meanings. The message-type names are already chosen this way; see <a href="#type-names">Type Names</a>.</p>
+The top-level keys below each encode as one token in compact JSON with the
+[Apertus 2 tokeniser](https://github.com/swiss-ai/apertus-omni-tokenizer),
+verified against revision `ba648ff` (`v2-on-pr24`). The values `low`, `medium`,
+and `high` also each encode as one token. These counts exclude JSON quotes
+and punctuation.
 
 | Field         | JSON type | Purpose                                                    |
 | ------------- | --------- | ---------------------------------------------------------- |
 | `identity`    | string    | Model name, role, and self-description.                    |
-| `effort`      | string    | Reasoning: `low`, `medium` (default), or `high`.           |
+| `thinking`    | string    | Required: `low`, `medium` (standard), or `high`.           |
 | `behavior`    | string    | Standing instructions for responses and actions.           |
 | `tools`       | array     | Tool declarations; an empty array means no tools.          |
 | `environment` | string    | Deployment context, such as locale or working environment. |
@@ -733,7 +735,7 @@ for the complete message.
 ```json
 {
   "identity": "You are Apertus 2, an AI assistant.",
-  "effort": "medium",
+  "thinking": "medium",
   "behavior": "Answer clearly and concisely in British English.",
   "tools": [],
   "environment": "Text-only chat. No external tools are available."
@@ -743,20 +745,34 @@ for the complete message.
 <p style="border: 1px solid #7BBBD5; border-left: 4px solid #7BBBD5; background-color: #BFD8E1; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>ℹ NOTE:</strong> This example is pretty-printed for readability. Training and serving use <a style="color: inherit; text-decoration: underline;" href="#system-prompt-content-and-layout">compact JSON</a> without whitespace outside strings.</p>
 
 The example shows only the JSON payload; the
-[system input message](#system) includes the envelope. Omitting `effort`
-selects `medium` in the current draft. Tool fields follow
+[system input message](#system) includes the envelope. The required `thinking`
+field explicitly carries the standard setting, `medium`. Tool fields follow
 [Tool Declarations](#tool-declarations).
 
 ### Thinking and Effort
 
-`effort` supports `low`, `medium`, and `high` in this draft, with **`medium`
-as the default** when the field is omitted. Reasoning length depends on both
-the specific task and the selected effort: `high` may produce more and longer
-thinking traces for analysis and verification, while `low` reduces their
-number and length. `medium` balances reasoning and checking. These levels
-do not prescribe a fixed trace length or reply length; the model follows
-`behavior` when presenting its answer. Reasoning uses [think](#think)
-messages; that section defines their visibility and retention.
+**Every system-prompt payload must include `thinking` as a string with exactly
+one of three values: `low`, `medium`, or `high`.** `medium` is the standard
+setting. The library writes `"thinking":"medium"` when the caller does not
+select a level and validates the field before passing the prompt to the
+model. Missing fields in an assembled prompt and unsupported values are
+library validation errors; the model is not expected to detect or recover
+from them, and training need not cover these invalid configurations.
+
+For a given task, `low` reduces the amount of reasoning, `medium` provides
+a balanced level, and `high` increases analysis and verification. This can
+affect both the number and length of [think](#think) messages.
+
+There is **no fixed token budget or trace length per level**. Tasks and
+capabilities have different reasoning needs, so a single budget across them
+would not express the intended effort. The amount of reasoning depends on
+both the task and the setting. Effort does not prescribe reply length;
+`behavior` governs how the model presents its answer.
+
+<blockquote style="border-left: 4px solid #FF0000; background-color: #BFD8E1; color: #2E2F31; padding: 12px 16px;">
+<p><strong>🎓 Training Impact</strong></p>
+<p>Each training contributor must teach and evaluate effort control for the use cases and capabilities they train. Include comparable tasks at all three levels and check that the model reasons less at <code>low</code> and more at <code>high</code>, relative to <code>medium</code>. Match the amount of useful reasoning to each task's needs rather than imposing a shared token budget or rewarding extra text alone.</p>
+</blockquote>
 
 ### Other Configurable Behaviour
 
@@ -782,7 +798,7 @@ in training.
 ```json
 {
   "identity": "You are Apertus 2, a coding assistant.",
-  "effort": "high",
+  "thinking": "high",
   "behavior": "Inspect relevant files before proposing changes. State assumptions and summarise findings concisely.",
   "tools": [
     {
@@ -824,9 +840,14 @@ The model copies the declared name into the
 declaring a schema does not change which component validates arguments or
 which error channel carries a failure.
 
-<p style="color: #C2410C;"><strong>TODO (from: Raphael; for: unassigned):</strong> Decide how <code>additionalProperties: false</code> is handled: include declarations with and without it in training so the model respects it when present, and let tool authors set it to forbid extra arguments.</p>
+Tool authors choose whether to restrict extra arguments using
+[`additionalProperties`](https://json-schema.org/understanding-json-schema/reference/object#additionalproperties).
+When it is `false`, the model must not add arguments beyond those allowed
+by the schema. When omitted or `true`, this keyword does not restrict extra
+arguments; other schema constraints and tool instructions still apply.
+The profile does not require every tool to use the same setting.
 
 <blockquote style="border-left: 4px solid #FF0000; background-color: #BFD8E1; color: #2E2F31; padding: 12px 16px;">
 <p><strong>🎓 Training Impact</strong></p>
-<p>Model should be trained for tool selection, schema-compliant arguments, policy adherence, and result/error handling with no tools, few tools, and many tools. Vary names, schemas, ordering, and environments, including irrelevant tools. Evaluate transfer to unfamiliar tool inventories and correct behaviour when no suitable tool is available.</p>
+<p>Train the model for tool selection, schema-compliant arguments, policy adherence, and result/error handling with no tools, few tools, and many tools. Vary names, schemas, ordering, and environments, including irrelevant tools. Training should include diverse declarations with <code>additionalProperties</code> set to <code>false</code>, set to <code>true</code>, and omitted, including mixed tool inventories. Evaluate that the model follows each tool's schema, avoids forbidden extra arguments, and handles permitted extra arguments appropriately. Also evaluate transfer to unfamiliar tool inventories and correct behaviour when no suitable tool is available.</p>
 </blockquote>
