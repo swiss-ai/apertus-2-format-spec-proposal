@@ -1,0 +1,24 @@
+# markdownlint configuration for the specification repository.
+# See AGENTS.md for the prose and formatting rules these settings support.
+default: true
+
+# Long prose lines and wide tables are acceptable.
+MD013: false
+
+# Styled warning, TODO, open question, note, and Training Impact blocks.
+MD033:
+  allowed_elements: [p, strong, code, blockquote, br, a]
+
+# Consistent formatting choices.
+MD003: { style: atx }
+MD004: { style: dash }
+MD048: { style: backtick }
+MD055: { style: leading_and_trailing }
+MD056: true
+MD060: { style: aligned }
+
+# Repeated headings are legitimate across sections; forbid only siblings.
+MD024: { siblings_only: true }
+
+# Numbered rules continue across sections (rules 1 to 4 in spec.md).
+MD029: false

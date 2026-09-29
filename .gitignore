@@ -1,0 +1,15 @@
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Node tooling used by the CI checks
+node_modules/
+
+# Personal Claude Code settings
+.claude/settings.local.json

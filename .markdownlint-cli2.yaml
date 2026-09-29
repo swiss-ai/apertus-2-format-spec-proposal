@@ -1,0 +1,8 @@
+# Rules live in .markdownlint.yml, which markdownlint-cli2 discovers automatically.
+globs:
+  - "**/*.md"
+ignores:
+  - node_modules/**
+  - .idea/**
+  # Symlink to AGENTS.md; lint the target once.
+  - CLAUDE.md

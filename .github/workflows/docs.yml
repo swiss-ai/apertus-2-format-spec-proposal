@@ -1,0 +1,46 @@
+name: Documentation checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  markdownlint:
+    name: Markdown formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Reads .markdownlint-cli2.yaml and .markdownlint.yml from the repo root.
+      - uses: DavidAnson/markdownlint-cli2-action@v24
+
+  links:
+    name: Links and anchors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          lycheeVersion: v0.24.2
+          args: --offline --include-fragments --no-progress --root-dir "${{ github.workspace }}" "**/*.md"
+
+  diagrams:
+    name: Protocol diagrams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
+      - name: Check SVG diagrams and forbid Mermaid blocks
+        run: bash scripts/check-diagrams.sh
+
+  whitespace:
+    name: Whitespace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: git diff --check against the PR base
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" HEAD
