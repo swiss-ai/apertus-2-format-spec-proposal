@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="870" viewBox="0 0 1000 870" role="img" aria-labelledby="title description">
+  <title id="title">Model output validation</title>
+  <desc id="description">The harness accepts valid messages, rejects unsupported types, and discards malformed messages and their suffix. A separate response row shows no validation notice for valid messages and host notices carrying UnknownMessageType or MalformedMessage for errors. Unknown types receive a notice at the next boundary; malformed output recovers at the last clean boundary. The model corrects its output, using a fresh counter for a new call attempt.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 1 1 L 9 5 L 1 9 Z" fill="#2E2F31"/></marker></defs>
+  <rect width="1000" height="870" fill="#FFFFFF"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#2E2F31">
+    <text x="32" y="45" font-size="28" font-weight="700">
+      <tspan x="32" dy="0">Model output validation</tspan>
+    </text>
+    <text x="32" y="76" font-size="18" font-weight="400">
+      <tspan x="32" dy="0">Accept valid output; report unsupported types and malformed messages.</tspan>
+    </text>
+    <rect x="252" y="112" width="496" height="64" rx="10" fill="#7BBBD5" stroke="#2E2F31" stroke-width="1.5"/>
+    <text x="276" y="153" font-size="23" font-weight="700">
+      <tspan x="276" dy="0">Model emits a message</tspan>
+    </text>
+    <path d="M 500 176 V 208" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M 180 208 H 820" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M 180 208 V 242" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 500 208 V 242" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 820 208 V 242" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <rect x="32" y="244" width="296" height="210" rx="10" fill="#AACFDC" stroke="#2E2F31" stroke-width="1.5"/>
+    <circle cx="59" cy="277" r="11" fill="#FFFFFF" stroke="#2E2F31" stroke-width="1.7"/>
+    <path d="M 54 277 l 3 4 l 7 -8" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <text x="80" y="285" font-size="23" font-weight="700">
+      <tspan x="80" dy="0">Valid message</tspan>
+    </text>
+    <rect x="352" y="244" width="296" height="210" rx="10" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.5"/>
+    <circle cx="379" cy="277" r="11" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.7"/>
+    <path d="M 379 272 v 6" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="379" cy="282" r="1.3" fill="#2E2F31"/>
+    <text x="400" y="285" font-size="23" font-weight="700">
+      <tspan x="400" dy="0">Unknown type</tspan>
+    </text>
+    <rect x="672" y="244" width="296" height="210" rx="10" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.5"/>
+    <circle cx="699" cy="277" r="11" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.7"/>
+    <path d="M 699 272 v 6" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="699" cy="282" r="1.3" fill="#2E2F31"/>
+    <text x="720" y="285" font-size="23" font-weight="700">
+      <tspan x="720" dy="0">Malformed message</tspan>
+    </text>
+    <text x="56" y="323" font-size="17" font-weight="400">
+      <tspan x="56" dy="0">Known type, valid envelope</tspan>
+      <tspan x="56" dy="25">and type-specific header.</tspan>
+    </text>
+    <text x="56" y="385" font-size="17" font-weight="400">
+      <tspan x="56" dy="0">Dispatch to its recipient,</tspan>
+      <tspan x="56" dy="25">or ignore a known type</tspan>
+      <tspan x="56" dy="25">the deployment does not use.</tspan>
+    </text>
+    <text x="376" y="323" font-size="17" font-weight="400">
+      <tspan x="376" dy="0">Valid framing, but the</tspan>
+      <tspan x="376" dy="25">output type is unsupported.</tspan>
+    </text>
+    <text x="376" y="385" font-size="17" font-weight="400">
+      <tspan x="376" dy="0">Do not dispatch.</tspan>
+      <tspan x="376" dy="25">Keep the valid context.</tspan>
+    </text>
+    <text x="696" y="323" font-size="17" font-weight="400">
+      <tspan x="696" dy="0">Invalid envelope or header,</tspan>
+      <tspan x="696" dy="25">or an incomplete message.</tspan>
+    </text>
+    <text x="696" y="385" font-size="17" font-weight="400">
+      <tspan x="696" dy="0">Discard message and suffix.</tspan>
+      <tspan x="696" dy="25">Return to the last clean</tspan>
+      <tspan x="696" dy="25">message boundary.</tspan>
+    </text>
+    <path d="M 180 454 V 492" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 500 454 V 492" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 820 454 V 492" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <g aria-label="Response messages to model">
+      <rect x="16" y="494" width="968" height="194" rx="12" fill="#BFD8E1"/>
+    <text x="32" y="524" font-size="19" font-weight="700">
+      <tspan x="32" dy="0">Response messages to model</tspan>
+    </text>
+    <rect x="32" y="546" width="296" height="126" rx="10" fill="#AACFDC" stroke="#2E2F31" stroke-width="1.5"/>
+    <rect x="352" y="546" width="296" height="126" rx="10" fill="#FFFFFF" stroke="#2E2F31" stroke-width="1.5"/>
+    <rect x="672" y="546" width="296" height="126" rx="10" fill="#FFFFFF" stroke="#2E2F31" stroke-width="1.5"/>
+    <text x="56" y="579" font-size="22" font-weight="700">
+      <tspan x="56" dy="0">No validation notice</tspan>
+    </text>
+    <text x="56" y="616" font-size="17" font-weight="400">
+      <tspan x="56" dy="0">Tool calls follow their</tspan>
+      <tspan x="56" dy="25">own outcome paths.</tspan>
+    </text>
+    <text x="376" y="579" font-size="24" font-weight="700" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="376" dy="0">host</tspan>
+    </text>
+    <text x="376" y="610" font-size="18" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="376" dy="0">UnknownMessageType</tspan>
+    </text>
+    <text x="376" y="638" font-size="16" font-weight="400">
+      <tspan x="376" dy="0">Explain unsupported type</tspan>
+      <tspan x="376" dy="25">at the next message boundary.</tspan>
+    </text>
+    <text x="696" y="579" font-size="24" font-weight="700" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="696" dy="0">host</tspan>
+    </text>
+    <text x="696" y="610" font-size="18" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="696" dy="0">MalformedMessage</tspan>
+    </text>
+    <text x="696" y="638" font-size="16" font-weight="400">
+      <tspan x="696" dy="0">Explain defect and correction</tspan>
+      <tspan x="696" dy="25">at the recovered boundary.</tspan>
+    </text>
+    </g>
+    <path d="M 180 672 V 734" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 500 672 V 704 H 820 V 672" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M 660 704 V 734" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <rect x="32" y="736" width="296" height="102" rx="10" fill="#BFD8E1" stroke="#2E2F31" stroke-width="1.5"/>
+    <rect x="352" y="736" width="616" height="102" rx="10" fill="#BFD8E1" stroke="#2E2F31" stroke-width="1.5"/>
+    <text x="56" y="776" font-size="21" font-weight="700">
+      <tspan x="56" dy="0">Continue burst or wait</tspan>
+    </text>
+    <text x="376" y="769" font-size="22" font-weight="700">
+      <tspan x="376" dy="0">Model corrects its output</tspan>
+    </text>
+    <text x="376" y="799" font-size="18" font-weight="400">
+      <tspan x="376" dy="0">Resubmit for validation.</tspan>
+      <tspan x="376" dy="25">New call attempt: use a fresh global counter.</tspan>
+    </text>
+  </g>
+</svg>

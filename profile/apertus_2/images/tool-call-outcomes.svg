@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="940" viewBox="0 0 1000 940" role="img" aria-labelledby="title description">
+  <title id="title">Tool call outcomes</title>
+  <desc id="description">After successful invocation, HTTP errors, invalid arguments, tool crashes, and malformed output use result. Argument-validation failures always use result, even when detected by the harness. Harness routing or invocation failures and harness timeouts use host; timeouts carry NotCompleted. A separate row labelled Response messages to model shows the response for each outcome. Message-format failures follow output validation. Investigate failures and retry with a fresh global counter.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1 L 9 5 L 1 9 Z" fill="#2E2F31"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="940" fill="#FFFFFF"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#2E2F31">
+    <text x="32" y="45" font-size="28" font-weight="700">
+      <tspan x="32" dy="0">Tool call outcomes</tspan>
+    </text>
+    <text x="32" y="76" font-size="18" font-weight="400">
+      <tspan x="32" dy="0">The invocation boundary determines the channel; harness timeouts are the exception.</tspan>
+    </text>
+    <rect x="252" y="112" width="496" height="110" rx="10" fill="#7BBBD5" stroke="#2E2F31" stroke-width="1.5"/>
+    <text x="276" y="147" font-size="23" font-weight="700">
+      <tspan x="276" dy="0">Model emits call</tspan>
+    </text>
+    <text x="276" y="181" font-size="18" font-weight="400">
+      <tspan x="276" dy="0">Harness checks tool name + global counter</tspan>
+      <tspan x="276" dy="26">Then attempts tool invocation</tspan>
+    </text>
+    <path d="M 500 222 V 259" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M 180 259 H 820" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M 180 259 V 298" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 500 259 V 298" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <path d="M 820 259 V 298" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <rect x="32" y="300" width="296" height="212" rx="10" fill="#AACFDC" stroke="#2E2F31" stroke-width="1.7"/>
+    <circle cx="59" cy="333" r="11" fill="#FFFFFF" stroke="#2E2F31" stroke-width="1.7"/>
+    <path d="M 54 333 l 3 4 l 7 -8" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <rect x="352" y="300" width="296" height="212" rx="10" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.7"/>
+    <circle cx="379" cy="333" r="11" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.7"/>
+    <path d="M 379 328 v 6" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="379" cy="338" r="1.3" fill="#2E2F31"/>
+    <rect x="672" y="300" width="296" height="212" rx="10" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.7"/>
+    <circle cx="699" cy="333" r="11" fill="#FFFFFF" stroke="#FF0000" stroke-width="1.7"/>
+    <path d="M 699 328 v 6" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="699" cy="338" r="1.3" fill="#2E2F31"/>
+    <text x="80" y="341" font-size="23" font-weight="700">
+      <tspan x="80" dy="0">Success</tspan>
+    </text>
+    <text x="400" y="341" font-size="23" font-weight="700">
+      <tspan x="400" dy="0">Tool Error</tspan>
+    </text>
+    <text x="720" y="341" font-size="23" font-weight="700">
+      <tspan x="720" dy="0">Harness Error</tspan>
+    </text>
+    <text x="56" y="377" font-size="17" font-weight="400">
+      <tspan x="56" dy="0">The tool completes successfully.</tspan>
+    </text>
+    <text x="56" y="435" font-size="17" font-weight="400">
+      <tspan x="56" dy="0">Returned data is available</tspan>
+      <tspan x="56" dy="26">to continue the task.</tspan>
+    </text>
+    <text x="376" y="377" font-size="17" font-weight="400">
+      <tspan x="376" dy="0">After successful invocation,</tspan>
+      <tspan x="376" dy="26">except a harness timeout.</tspan>
+    </text>
+    <text x="376" y="435" font-size="17" font-weight="400">
+      <tspan x="376" dy="0">HTTP 404 / other tool error</tspan>
+      <tspan x="376" dy="26">Wrong arguments / tool crash</tspan>
+      <tspan x="376" dy="26">Malformed tool output</tspan>
+    </text>
+    <text x="696" y="377" font-size="17" font-weight="400">
+      <tspan x="696" dy="0">Before successful invocation,</tspan>
+      <tspan x="696" dy="26">or a harness timeout.</tspan>
+    </text>
+    <text x="696" y="435" font-size="17" font-weight="400">
+      <tspan x="696" dy="0">Unknown tool / wrong counter</tspan>
+      <tspan x="696" dy="26">Harness-side invocation failure</tspan>
+      <tspan x="696" dy="26">Timeout: NotCompleted</tspan>
+    </text>
+    <path d="M 180 512 V 550" fill="none" stroke="#2E2F31" stroke-width="1.8" marker-end="url(#arrow)"/>
+    <path d="M 500 512 V 550" fill="none" stroke="#2E2F31" stroke-width="1.8" marker-end="url(#arrow)"/>
+    <path d="M 820 512 V 550" fill="none" stroke="#2E2F31" stroke-width="1.8" marker-end="url(#arrow)"/>
+    <g aria-label="Response messages to model">
+      <rect x="16" y="552" width="968" height="192" rx="12" fill="#BFD8E1"/>
+      <text x="32" y="582" font-size="19" font-weight="700">Response messages to model</text>
+      <rect x="32" y="604" width="296" height="124" rx="10" fill="#AACFDC" stroke="#2E2F31" stroke-width="1.5"/>
+      <rect x="352" y="604" width="296" height="124" rx="10" fill="#FFFFFF" stroke="#2E2F31" stroke-width="1.5"/>
+      <rect x="672" y="604" width="296" height="124" rx="10" fill="#FFFFFF" stroke="#2E2F31" stroke-width="1.5"/>
+    <text x="56" y="636" font-size="24" font-weight="600" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="56" dy="0">result</tspan>
+    </text>
+
+    <text x="56" y="672" font-size="17" font-weight="400">
+      <tspan x="56" dy="0">Echo name + counter.</tspan>
+      <tspan x="56" dy="26">Carry output; close the call.</tspan>
+    </text>
+
+    <text x="376" y="636" font-size="24" font-weight="600" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="376" dy="0">result</tspan>
+    </text>
+
+    <text x="376" y="672" font-size="17" font-weight="400">
+      <tspan x="376" dy="0">Echo name + counter.</tspan>
+      <tspan x="376" dy="26">Include observed diagnostics.</tspan>
+    </text>
+
+    <text x="696" y="636" font-size="24" font-weight="600" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+      <tspan x="696" dy="0">host</tspan>
+    </text>
+
+    <text x="696" y="672" font-size="17" font-weight="400">
+      <tspan x="696" dy="0">Own notice + call counter.</tspan>
+      <tspan x="696" dy="26">No result.</tspan>
+    </text>
+
+    </g>
+    <path d="M 180 728 V 782" fill="none" stroke="#2E2F31" stroke-width="1.8" marker-end="url(#arrow)"/>
+    <path d="M 500 728 V 756 H 820 V 728" fill="none" stroke="#2E2F31" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M 660 756 V 782" fill="none" stroke="#2E2F31" stroke-width="1.8" marker-end="url(#arrow)"/>
+    <rect x="32" y="784" width="296" height="78" rx="10" fill="#BFD8E1" stroke="#2E2F31" stroke-width="1.5"/>
+    <rect x="352" y="784" width="616" height="78" rx="10" fill="#BFD8E1" stroke="#2E2F31" stroke-width="1.5"/>
+    <text x="56" y="830" font-size="20" font-weight="700">Continue with the result</text>
+    <text x="376" y="814" font-size="22" font-weight="700">Investigate failure cause</text>
+    <text x="376" y="843" font-size="18">Retry with a fresh counter, report failure, or continue.</text>
+    <text x="32" y="901" font-size="16" font-weight="400">
+      <tspan x="32" dy="0">Argument-validation errors always use result, even when the harness detects them.</tspan>
+      <tspan x="32" dy="26">Message-format errors follow Output Validation and Error Handling.</tspan>
+    </text>
+  </g>
+</svg>
