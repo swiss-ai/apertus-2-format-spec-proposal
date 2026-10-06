@@ -31,6 +31,7 @@ and [trust ranks](#trust-ranks).
 
 | Date       | Change introduced                                                                                                                                               |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-06 | Keep `tools` in every system prompt, write example payloads without padding spaces, and update the tokeniser reference.                                         |
 | 2026-09-28 | Simplify profile context, separate document provenance and citation IDs, and resolve system-prompt formatting, thinking settings, and tool-schema requirements. |
 | 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                                                                                                 |
 
@@ -107,12 +108,12 @@ Header examples use `...` as a payload placeholder. Examples starting at a
 non-zero counter continue a conversation with earlier calls omitted.
 
 ```text
-<|in|>user<|hdr|> ... <|/in|>
-<|in|>document{"from":"user","id":"a1"}<|hdr|> ... <|/in|>
-<|in|>document{"from":"internal-docs","id":"r3"}<|hdr|> ... <|/in|>
-<|in|>document<|hdr|> ... <|/in|>
-<|out|>call{"name":"get_weather","counter":4}<|hdr|> ... <|/out|>
-<|in|>result{"name":"get_weather","counter":4}<|hdr|> ... <|/in|>
+<|in|>user<|hdr|>...<|/in|>
+<|in|>document{"from":"user","id":"a1"}<|hdr|>...<|/in|>
+<|in|>document{"from":"internal-docs","id":"r3"}<|hdr|>...<|/in|>
+<|in|>document<|hdr|>...<|/in|>
+<|out|>call{"name":"get_weather","counter":4}<|hdr|>...<|/out|>
+<|in|>result{"name":"get_weather","counter":4}<|hdr|>...<|/in|>
 ```
 
 The harness writes input headers; the model writes output headers, which
@@ -226,9 +227,9 @@ notices carry no defined labels, and the model treats their content as a
 rank 2 instruction from the harness.
 
 ```text
-<|in|>host<|hdr|> The user has been away for three hours. Current time: 2026-07-19 17:32. <|/in|>
-<|in|>host<|hdr|> NotCompleted: call counter 5 to get_weather exceeds the harness timeout. The call is closed. <|/in|>
-<|in|>host<|hdr|> Context compacted. <|/in|>
+<|in|>host<|hdr|>The user has been away for three hours. Current time: 2026-07-19 17:32.<|/in|>
+<|in|>host<|hdr|>NotCompleted: call counter 5 to get_weather exceeds the harness timeout. The call is closed.<|/in|>
+<|in|>host<|hdr|>Context compacted.<|/in|>
 ```
 
 - **Header:** `host`; no additional fields are defined.
@@ -253,13 +254,13 @@ Results can arrive between output messages or resume a waiting model while
 other calls remain open.
 
 ```text
-<|out|>call{"name":"get_weather","counter":4}<|hdr|> {"city":"Lisbon"} <|/out|>
+<|out|>call{"name":"get_weather","counter":4}<|hdr|>{"city":"Lisbon"}<|/out|>
 <|wait|>
-<|in|>result{"name":"get_weather","counter":4}<|hdr|> {"tempC":24,"cond":"sunny"} <|/in|>
-<|out|>call{"name":"get_weather","counter":5}<|hdr|> {"city":"Porto"} <|/out|>
+<|in|>result{"name":"get_weather","counter":4}<|hdr|>{"tempC":24,"cond":"sunny"}<|/in|>
+<|out|>call{"name":"get_weather","counter":5}<|hdr|>{"city":"Porto"}<|/out|>
 <|wait|>
-<|in|>result{"name":"get_weather","counter":5}<|hdr|> {"error":"No weather data is available for Porto."} <|/in|>
-<|out|>reply<|hdr|> Lisbon is sunny and 24°C. The weather service returned no data for Porto. <|/out|>
+<|in|>result{"name":"get_weather","counter":5}<|hdr|>{"error":"No weather data is available for Porto."}<|/in|>
+<|out|>reply<|hdr|>Lisbon is sunny and 24°C. The weather service returned no data for Porto.<|/out|>
 <|wait|>
 ```
 
@@ -283,11 +284,11 @@ above unranked data. Queued user messages follow the same
 [arrival-order rule](#queued-inputs-and-delivery-order) as other inputs.
 
 ```text
-<|in|>user<|hdr|> What should I wear in Lisbon today? <|/in|>
-<|out|>call{"name":"get_weather","counter":0}<|hdr|> {"city":"Lisbon"} <|/out|>
+<|in|>user<|hdr|>What should I wear in Lisbon today?<|/in|>
+<|out|>call{"name":"get_weather","counter":0}<|hdr|>{"city":"Lisbon"}<|/out|>
 <|wait|>
-<|in|>user<|hdr|> I'll be walking a lot, so include advice about shoes. <|/in|>
-<|out|>think<|hdr|> Include walking shoes when the weather result arrives. <|/out|>
+<|in|>user<|hdr|>I'll be walking a lot, so include advice about shoes.<|/in|>
+<|out|>think<|hdr|>Include walking shoes when the weather result arrives.<|/out|>
 <|wait|>
 ```
 
@@ -400,9 +401,9 @@ intended answer, for example to quote the user's wording or to draft a
 phrase in the reply language.
 
 ```text
-<|in|>user<|hdr|> Convert 1,250 USD to EUR using a rate of 0.92 EUR per USD. <|/in|>
-<|out|>think<|hdr|> Multiply 1,250 by 0.92 to obtain 1,150 EUR. <|/out|>
-<|out|>reply<|hdr|> At the supplied rate, 1,250 USD is 1,150 EUR. <|/out|>
+<|in|>user<|hdr|>Convert 1,250 USD to EUR using a rate of 0.92 EUR per USD.<|/in|>
+<|out|>think<|hdr|>Multiply 1,250 by 0.92 to obtain 1,150 EUR.<|/out|>
+<|out|>reply<|hdr|>At the supplied rate, 1,250 USD is 1,150 EUR.<|/out|>
 <|wait|>
 ```
 
@@ -453,10 +454,10 @@ comes after the reasoning and before the `reply`, so the reply restates an
 answer that is already in context. Deployments that do not grade may ignore it.
 
 ```text
-<|in|>user<|hdr|> Solve x + y = 1 and x - y = 5. Return the answer as JSON with keys x and y. <|/in|>
-<|out|>think<|hdr|> Adding the equations gives 2x = 6, so x = 3 and y = -2. <|/out|>
-<|out|>claim<|hdr|> {"x":3,"y":-2} <|/out|>
-<|out|>reply<|hdr|> The solution is x = 3 and y = -2. <|/out|>
+<|in|>user<|hdr|>Solve x + y = 1 and x - y = 5. Return the answer as JSON with keys x and y.<|/in|>
+<|out|>think<|hdr|>Adding the equations gives 2x = 6, so x = 3 and y = -2.<|/out|>
+<|out|>claim<|hdr|>{"x":3,"y":-2}<|/out|>
+<|out|>reply<|hdr|>The solution is x = 3 and y = -2.<|/out|>
 <|wait|>
 ```
 
@@ -486,14 +487,14 @@ keeps writing. User input can arrive between calls, and pending calls
 survive burst endings until a response closes them.
 
 ```text
-<|out|>think<|hdr|> Need tomorrow's weather and calendar; fetch both. <|/out|>
-<|out|>call{"name":"get_weather","counter":4}<|hdr|> {"city":"Lisbon","day":"tomorrow"} <|/out|>
-<|in|>user<|hdr|> I'd rather not be outside after 6pm. <|/in|>
-<|out|>call{"name":"get_calendar","counter":5}<|hdr|> {"day":"tomorrow"} <|/out|>
+<|out|>think<|hdr|>Need tomorrow's weather and calendar; fetch both.<|/out|>
+<|out|>call{"name":"get_weather","counter":4}<|hdr|>{"city":"Lisbon","day":"tomorrow"}<|/out|>
+<|in|>user<|hdr|>I'd rather not be outside after 6pm.<|/in|>
+<|out|>call{"name":"get_calendar","counter":5}<|hdr|>{"day":"tomorrow"}<|/out|>
 <|wait|>
-<|in|>result{"name":"get_weather","counter":4}<|hdr|> {"tempC":24,"cond":"sunny"} <|/in|>
-<|in|>result{"name":"get_calendar","counter":5}<|hdr|> [{"time":"15:00","title":"Dentist"}] <|/in|>
-<|out|>reply<|hdr|> Tomorrow is sunny and 24°C. A morning walk fits before your 15:00 dentist appointment and gets you home before 18:00. <|/out|>
+<|in|>result{"name":"get_weather","counter":4}<|hdr|>{"tempC":24,"cond":"sunny"}<|/in|>
+<|in|>result{"name":"get_calendar","counter":5}<|hdr|>[{"time":"15:00","title":"Dentist"}]<|/in|>
+<|out|>reply<|hdr|>Tomorrow is sunny and 24°C. A morning walk fits before your 15:00 dentist appointment and gets you home before 18:00.<|/out|>
 <|wait|>
 ```
 
@@ -718,16 +719,17 @@ for the complete message.
 
 The top-level keys below each encode as one token in compact JSON with the
 [Apertus 2 tokeniser](https://github.com/swiss-ai/apertus-omni-tokenizer),
-verified against revision `ba648ff` (`v2-on-pr24`). The values `low`, `medium`,
-and `high` also each encode as one token. These counts exclude JSON quotes
-and punctuation.
+verified against the text-only instruct artifact at revision `d00a5c1`
+([apertus-omni-tokenizer PR #35](https://github.com/swiss-ai/apertus-omni-tokenizer/pull/35)).
+The values `low`, `medium`, and `high` also each encode as one token. These
+counts exclude JSON quotes and punctuation.
 
 | Field         | JSON type | Purpose                                                    |
 | ------------- | --------- | ---------------------------------------------------------- |
 | `identity`    | string    | Model name, role, and self-description.                    |
 | `thinking`    | string    | Required: `low`, `medium` (standard), or `high`.           |
 | `behavior`    | string    | Standing instructions for responses and actions.           |
-| `tools`       | array     | Tool declarations; an empty array means no tools.          |
+| `tools`       | array     | Tool declarations; always present, `[]` when none.         |
 | `environment` | string    | Deployment context, such as locale or working environment. |
 
 **Example: conversational assistant without tools.**
@@ -787,11 +789,12 @@ system-level instructions.
 ### Tool Declarations
 
 `tools` is an array of objects, each with a **unique** `name`, a `description`,
-an argument `schema`, and an optional `policy`. The name, description, and
-policy are strings. The description explains what the tool does, and the
-policy states when or how to use it. The model selects from the declared
-tools rather than assuming an environment provides tools it sees elsewhere
-in training.
+an argument `schema`, and an optional `policy`. `tools` itself is always
+present: a system prompt without tools carries an empty array. The name,
+description, and policy are strings. The description explains what the tool
+does, and the policy states when or how to use it. The model selects from the
+declared tools rather than assuming an environment provides tools it sees
+elsewhere in training.
 
 **Example: coding assistant with higher reasoning effort and one tool.**
 
