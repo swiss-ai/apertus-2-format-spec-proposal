@@ -31,7 +31,7 @@ and [trust ranks](#trust-ranks).
 
 | Date       | Change introduced                                                                                                                                               |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-10-06 | Keep `tools` in every system prompt, write example payloads without padding spaces, and update the tokeniser reference.                                         |
+| 2026-10-06 | Keep `tools` in every system prompt, start sequences with BOS, write example payloads without padding spaces, and update the tokeniser reference.               |
 | 2026-09-28 | Simplify profile context, separate document provenance and citation IDs, and resolve system-prompt formatting, thinking settings, and tool-schema requirements. |
 | 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                                                                                                 |
 
@@ -160,6 +160,13 @@ which all other messages are read. It is the most trusted message
 Its payload uses the [compact JSON layout](#system-prompt-content-and-layout).
 There is exactly one system message: the harness updates it in place rather
 than appending another.
+
+An encoded Apertus 2 sequence starts with the tokeniser's beginning-of-sequence
+(BOS) token `<s>`, directly followed by the system message. The base model saw
+`<s>` at the start of every pretraining sequence, and the tokeniser does not
+insert it, so the reference library adds it. `<s>` is not a message envelope,
+receives no loss, and is never generated: the engine blocks it with every other
+special token ([rule 3](../../spec.md#what-the-engine-must-do)).
 
 ```text
 <|in|>system<|hdr|>
