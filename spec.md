@@ -365,7 +365,8 @@ the document it belongs to.
 A sequence boundary falls between messages: a training sequence holds
 whole messages, filled to length with `<|pad|>`, and a document longer
 than the sequence is split into several complete document messages.
-Message boundaries take the place of BOS/EOS separators.
+Message boundaries take the place of BOS/EOS separators; a profile may
+still start each sequence with its tokenizer's BOS token.
 
 ### Loss
 
