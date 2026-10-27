@@ -31,6 +31,7 @@ and [trust ranks](#trust-ranks).
 
 | Date       | Change introduced                                                                                                                                                               |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-31 | Keep think messages from earlier turns in context and define the profile's memory policy.                                                                                       |
 | 2026-10-06 | Keep `tools` in every system prompt, require non-empty tool names, start sequences with BOS, write example payloads without padding spaces, and update the tokeniser reference. |
 | 2026-09-28 | Simplify profile context, separate document provenance and citation IDs, and resolve system-prompt formatting, thinking settings, and tool-schema requirements.                 |
 | 2026-09-25 | First draft version based on discussions by Raphael and Imanol.                                                                                                                 |
@@ -58,6 +59,7 @@ and [trust ranks](#trust-ranks).
 - [Trust Ranks](#trust-ranks)
 - [Bursts and Delivery Order](#bursts-and-delivery-order)
   - [Queued Inputs and Delivery Order](#queued-inputs-and-delivery-order)
+- [Context and Memory Policy](#context-and-memory-policy)
 - [Model Behaviour and System Prompt](#model-behaviour-and-system-prompt)
   - [System Prompt Content and Layout](#system-prompt-content-and-layout)
   - [Thinking and Effort](#thinking-and-effort)
@@ -416,13 +418,10 @@ phrase in the reply language.
 
 - **Header:** `think`; no additional fields are defined.
 - **Content:** reasoning text. No format or style is enforced; both are a
-  training decision outside this profile. Think messages of the current
-  burst always remain visible to the model. From earlier bursts, the harness
-  may remove think messages that precede the most recent user message,
-  while preserving `<|wait|>` tokens. Effort levels are defined in
-  [Thinking and Effort](#thinking-and-effort).
-
-<p style="border: 1px solid #B8860B; border-left: 4px solid #B8860B; background-color: #FFF4CC; color: #2E2F31; padding: 10px 14px; border-radius: 6px;"><strong>⚠ WARNING:</strong> The harness may remove think messages from earlier bursts. Train the model to state every conclusion it needs later in a <code style="color: inherit; background-color: transparent;">reply</code> or <code style="color: inherit; background-color: transparent;">call</code>, never only in a think message.</p>
+  training decision outside this profile. Think messages stay in context for
+  the whole conversation, as defined in
+  [Context and Memory Policy](#context-and-memory-policy). Effort levels are
+  defined in [Thinking and Effort](#thinking-and-effort).
 
 <blockquote style="border-left: 4px solid #FF0000; background-color: #BFD8E1; color: #2E2F31; padding: 12px 16px;">
 <p><strong>🎓 Training Impact</strong></p>
@@ -700,6 +699,28 @@ workflow with queued inputs. It shows sequence, not elapsed time, and omits
 the system prompt; thinking is optional.
 
 ![Two horizontal conversation timelines with colours and labels for message types. Turn-based RAG shows a document and two user/reply exchanges. Above the agentic timeline, a queue holds a user update followed by a result; both enter when think closes, within the same burst. Wait marks each burst ending.](images/bursts-and-delivery.svg)
+
+## Context and Memory Policy
+
+Apertus 2 keeps the full conversation in context, including every think
+message from earlier bursts and turns. The harness appends messages and
+never removes individual output messages; this is the profile's
+[memory policy](../../spec.md#context-management). Training and serving see
+the same sequence. A deployment that must reclaim context compacts the
+conversation and announces this in a [host](#host) notice; the model
+continues from the described state.
+
+- **Benefits:** the model can rely on its earlier reasoning, such as options
+  it already explored or ruled out; a multi-turn conversation trains as one
+  sample without repeated prefixes; reinforcement learning (RL) rollouts need
+  no per-turn bookkeeping; and the harness's prefix cache stays valid.
+- **Drawbacks:** the context grows faster, which limits conversation length
+  before compaction; and mistakes in earlier reasoning stay in context.
+
+<blockquote style="border-left: 4px solid #FF0000; background-color: #BFD8E1; color: #2E2F31; padding: 12px 16px;">
+<p><strong>🎓 Training Impact</strong></p>
+<p>Train on complete multi-turn conversations with every think message kept. A wrong answer that a later turn corrects may be masked from the loss but stays in context. Include later turns that build on, or correct, earlier reasoning, and evaluate that the model reuses earlier conclusions without carrying earlier errors forward.</p>
+</blockquote>
 
 ## Model Behaviour and System Prompt
 
